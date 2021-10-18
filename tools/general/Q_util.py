@@ -5,6 +5,8 @@ from skimage.segmentation import mark_boundaries
 import cv2
 
 import sys
+
+import torchvision
 sys.path.append('./third_party/cython')
 from connectivity import enforce_connectivity
 
@@ -201,6 +203,25 @@ def upfeat(input, prob, up_h=2, up_w=2):
     return feat_sum
 
 
+def sp_it(input,affmat):
+    b, c, h, w = input.shape
+
+    h_shift = 2
+    w_shift = 2
+
+    p2d = (w_shift, w_shift, h_shift, h_shift)
+    
+    feat_pd = F.pad(input, p2d, mode='constant', value=0)
+
+    feat_list=[]
+    for i in range(5):
+        for j in range(5):
+            cur_c= feat_pd[:,:,i:i+h,j:j+w]
+            feat_list.append(cur_c)
+    feat_all =torch.stack(feat_list,dim=2)
+    feat_add = feat_all *affmat.reshape(b,1,25,h,w)
+    feat_ret = torch.sum(feat_add,2)
+    return feat_ret
 # ================= - spixel related -=============
 def assign2uint8(assign):
     #red up, green mid, blue down, for debug only
@@ -412,3 +433,17 @@ def refine_with_q(input,prob,iter=20,down_size=16):
     else:
         assert False, '尺寸不对'
     return input
+
+
+def turn_affgrid(ini_grid,cell=25):
+    def turn(ind):
+        center=[(ind-10+25)%25,(ind-5+25)%25,ind,(ind+5)%25,(ind+10)%25]
+        listret=[]
+        for i in range(5):
+            lll= (int(center[i]/5))*5
+            listret+=[(center[i]-2+5)%5+lll,(center[i]-1+5)%5+lll,center[i],(center[i]+1)%5+lll,(center[i]+2)%5+lll]
+        return torch.tensor(listret)
+    ret_list=[]
+    for i  in range(cell):
+        ret_list.append(turn(i))
+    return torch.stack(ret_list)

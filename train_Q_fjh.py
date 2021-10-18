@@ -490,3 +490,18 @@ if __name__ == '__main__':
     writer.close()
 
     print(args.tag)
+
+
+
+'''
+        for gpui in range(the_number_of_gpu):
+            curb = args.batch_size/the_number_of_gpu
+            # label_1hot_gpui = label_1hot.cuda(gpui)[int(curb*gpui):int(curb*(gpui+1))] # set C=50 as SSN does
+            LABXY_feat_tensor_gpui = LABXY_feat_tensor.cuda(gpui)[int(curb*gpui):int(curb*(gpui+1))]  # B* (50+2 )* H * W
+            prob_gpui=prob.cuda(gpui)[int(curb*gpui):int(curb*(gpui+1))] 
+            loss_guip, loss_sem_guip, loss_pos_guip = compute_semantic_pos_loss( prob_gpui,LABXY_feat_tensor_gpui,
+                                                        pos_weight= 0.003, kernel_size=16)
+            loss+=loss_guip.cpu()/the_number_of_gpu 
+            loss_sem+=loss_sem_guip.cpu()/the_number_of_gpu
+            loss_pos+=loss_pos_guip.cpu()/the_number_of_gpu
+'''

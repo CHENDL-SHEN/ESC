@@ -46,7 +46,7 @@ import models
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2,3,0,1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,5,6,7"
 parser = argparse.ArgumentParser()
 
 ###############################################################################
@@ -67,7 +67,7 @@ parser.add_argument('--use_gn', default=True, type=str2bool)
 ###############################################################################
 # Hyperparameter
 ###############################################################################
-parser.add_argument('--batch_size', default=4, type=int)
+parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--max_epoch', default=100, type=int)
 
 parser.add_argument('--lr', default=0.0005, type=float)
@@ -292,7 +292,6 @@ if __name__ == '__main__':
                     rgb= torch.stack([r,g,b],dim=1) 
                     rgb=make_cam(rgb)
                     mask_fg=(labels>0)
-                    mask_fg2=(labels>0)&(labels<21)
                     mask_fg=mask_fg.unsqueeze(1).expand(rgb.shape)
                     rgb[~mask_fg]=1
                     rgb = 200*(1-make_cam(rgb))*mask_fg#rgb[0].cpu().numpy()rgb*mask_fg
@@ -346,6 +345,7 @@ if __name__ == '__main__':
         tags = tags.cuda()
         sailencys = sailencys.cuda().view(sailencys.shape[0],1,sailencys.shape[1],sailencys.shape[2])/255.0
         labels =(sailencys>0.2).long()#prob[0][4].detach().min()#sailencys[0][0]
+        b,c,w,h=images.shape
         #################################################################################################
         # Inference
         #################################################################################################
@@ -357,24 +357,51 @@ if __name__ == '__main__':
         label_1hot = label2one_hot_torch(labels, C=21) # set C=50 as SSN does
         LABXY_feat_tensor = build_LABXY_feat(label_1hot, XY_feat_stack)  # B* (50+2 )* H * W
             # print(labels.size(), labels.min(), labels.sum())
-        loss =torch.tensor(0.0).cuda()
-        loss_sem =torch.tensor(0.0).cuda()
-        loss_pos =torch.tensor(0.0).cuda()
-        relu_loss =torch.tensor(1.0).cuda()
+
+        # relu_loss =torch.tensor(1.0).cuda()
         # prob[:,4]=0.9- relufn(0.9 -prob[:,4]) #prob[:,4].max()
         # relu_loss= 1/(torch.sum(prob,dim=1).mean()**2)
-        for gpui in range(the_number_of_gpu):
-            curb = args.batch_size/the_number_of_gpu
-            # label_1hot_gpui = label_1hot.cuda(gpui)[int(curb*gpui):int(curb*(gpui+1))] # set C=50 as SSN does
-            LABXY_feat_tensor_gpui = LABXY_feat_tensor.cuda(gpui)[int(curb*gpui):int(curb*(gpui+1))]  # B* (50+2 )* H * W
-            prob_gpui=prob.cuda(gpui)[int(curb*gpui):int(curb*(gpui+1))] 
-            loss_guip, loss_sem_guip, loss_pos_guip = compute_semantic_pos_loss( prob_gpui,LABXY_feat_tensor_gpui,
+
+        loss, loss_sem, loss_pos = compute_semantic_pos_loss( prob,LABXY_feat_tensor,
                                                         pos_weight= 0.003, kernel_size=16)
-            loss+=loss_guip.cpu()/the_number_of_gpu 
-            loss_sem+=loss_sem_guip.cpu()/the_number_of_gpu
-            loss_pos+=loss_pos_guip.cpu()/the_number_of_gpu
-        # loss, loss_sem, loss_pos = compute_semantic_pos_loss(  prob,LABXY_feat_tensor,
-                                                        # pos_weight= 0.003, kernel_size=16)
+
+        aff_grid =torch.range(0,24).long()
+        turn_aff= turn_affgrid(aff_grid)
+        aff_grid = aff_grid.reshape((1,1,5,5)).repeat((b,1,11,11))[:,:,:32,:32].cuda()
+        turn_aff = turn_aff.reshape((1,25,5,5)).repeat((b,1,11,11))[:,:,:32,:32].cuda()
+
+        aff_grid_1hot = label2one_hot_torch(aff_grid.long(), C=25)
+        aff_grid_1hot__ = upfeat(aff_grid_1hot,prob,16,16)
+        aff_grid_1hot__ = poolfeat(aff_grid_1hot__,prob,16,16)
+
+        sp_aff_mat=torch.gather(aff_grid_1hot__,1,turn_aff)#sp_aff_mat[0,:,20,20]
+                                                            #aff_grid_1hot__[0,:,20,20]
+        
+        torch.ones((1,9,20,32,32))*torch.ones((1,1,20,32,32))
+        ret=sp_it(aff_grid_1hot,sp_aff_mat)#(aff_grid_1hot__-ret).cpu().detach().numpy()
+        
+        test= poolfeat(LABXY_feat_tensor,prob,16,16)
+        test3=test
+        torch.cuda.synchronize()
+        print(time.time())
+        for i in range(10):
+            test3 = upfeat(test3,prob,16,16)
+            test3 = poolfeat(test3,prob,16,16)
+        test44 =test
+        torch.cuda.synchronize()
+        print(time.time())
+        for i in range(10):
+
+             test44 = sp_it(test44, )
+        torch.cuda.synchronize()
+        print(time.time())
+        # test4 = poolfeat(test44,sp_aff_mat,1,1)
+        abs(test44-test3)[0][1].cpu().detach().numpy()#
+
+        a=1
+
+
+        
         # loss+=relu_loss
         # loss = class_loss_fn(logits, labels)
         #################################################################################################
