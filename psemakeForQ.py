@@ -62,7 +62,11 @@ class evaluator:
 
         self.th_list = [0.25,0.3]
         #self.refine_list = [0]
-        self.refine_list = [25]
+        self.refine_list = [25,30]
+
+        self.th_bg=[0.1]
+        self.th_step=[0.4]
+        self.th_
 
         # self.th_list = [0.3]
         # self.refine_list = [20]
@@ -81,7 +85,7 @@ class evaluator:
         self.savept   = savept
         self.ptsave_path=[None,None,None]
         self.savepng   = savepng
-        self.save_path='experiments/res/cam_test2/'
+        self.save_path='experiments/res/cam_test/'
         if not os.path.exists( self.save_path):
                 os.mkdir(self.save_path)
         self.tag    = 'test'
@@ -125,31 +129,7 @@ class evaluator:
             torch.save(cam_list,os.path.join(self.ptsave_path[0],ids[0]+'.pt'))
 
         return cam_list
-    def get_Q(self,images,ids):
-        _,_,h,w = images.shape
-        Q_list=[]
-        model =self.proxy_Q_model if self.proxy_Q_model!=None else self.Q_model
-        if(type(model)==str):
-                Q_list = torch.load(os.path.join(model,ids[0]+'.pt'))
-        else:
-            for s in self.scale_list:
-                # if(type(model)==str)
-                target_size = (round(h * abs(s)), round(w* abs(s)))
-                H_, W_  = int(np.ceil(target_size[0]/16.)*16), int(np.ceil(target_size[1]/16.)*16)
-                scaled_images = F.interpolate(images, (H_,W_), mode='bilinear', align_corners=False)
-                if(s<0):
-                    scaled_images =torch.flip(scaled_images,dims=[3])#?dims
-                pred=model(scaled_images)
-                Q_list.append(pred)
-        if(self.proxy_Q_model==None):
-            refine_Q=Q_list[self.scale_list.index(1.0)]
-            if(self.ptsave_path[1]!=None):
-                torch.save(Q_list,os.path.join(self.ptsave_path[1],ids[0]+'.pt'))
-        else:
-            H_, W_  = int(np.ceil(h/16.)*16), int(np.ceil(w/16.)*16)
-            scaled_images = F.interpolate(scaled_images, (H_,W_), mode='bilinear', align_corners=False)
-            refine_Q=model(scaled_images)
-        return Q_list,refine_Q
+
     def getpse(self,cam_list,Q_list,tags):
         _,_,h,w=Q_list[self.scale_list.index(1.0)].shape
         refine_cam_list=[]
@@ -213,15 +193,11 @@ class evaluator:
                     gt_masks = gt_masks.cuda()
                     _,_,h,w= images.shape
                     torch.cuda.synchronize()
-                    t1=time.time()
-                    Qs,refinQ = self.get_Q(images,image_ids)
-                    torch.cuda.synchronize()
-                    t2=time.time()
+
                     cams = self.get_cam(images,image_ids)
                     torch.cuda.synchronize()
 
                     cams = self.getpse(cams,Qs,tags)
-                    t3=time.time()
 
 
                     # predictions = self.getpse(cams,Qs)
@@ -230,14 +206,9 @@ class evaluator:
 
                     for renum in range(len(self.refine_list)):
                         refinetime =self.refine_list[0] if renum==0 else 5
-                        if(self.with_Q):
-                            refine_cam= refine_with_q(refine_cam,refinQ,refinetime)
                         cams = (make_cam(refine_cam) * mask)
-                        if not self.Top_Left_Crop:
-                            resc=1
-                            if(self.fast_eval):
-                                    resc=2
-                            cams = F.interpolate(cams,(int(h/resc),int(w/resc)), mode='bilinear', align_corners=False)
+                        resc=1 if self.fast_eval else 2
+                        cams = F.interpolate(cams,(int(h/resc),int(w/resc)), mode='bilinear', align_corners=False)
                         for th in self.th_list:
                             cams[:,0]=th#predictions.max()
                             predictions=torch.argmax(cams,dim=1)
@@ -254,8 +225,7 @@ class evaluator:
                                         img_pil2.save(img_path)
                                         pass
                     # self.getbest_miou()
-                    torch.cuda.synchronize()
-                    t4=time.time()
+                    
                     if(step==self.first_check[0]):
                         if(self.getbest_miou(clear=False)[0]<self.first_check[1]):
                             good=False
@@ -263,9 +233,7 @@ class evaluator:
 
                     sys.stdout.write('\r# Evaluation [{}/{}] = {:.2f}%'.format(step + 1, length, (step + 1) / length * 100))
                     sys.stdout.flush()
-                    time_list[0]+=t2-t1
-                    time_list[1]+=t3-t2
-                    time_list[2]+=t4-t3
+
             # print(time_list)
             for m in [self.C_model, self.Q_model]:
                 if(m!=None):
