@@ -54,23 +54,22 @@ import  core.models as fcnmodel
 import nni
 
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "5,6,7,8"
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def get_params():
-
     parser = argparse.ArgumentParser()
     ###############################################################################
     # Dataset
     ###############################################################################
     parser.add_argument('--seed', default=0, type=int)
     parser.add_argument('--num_workers', default=4, type=int)
-    parser.add_argument('--data_dir', default='VOC2012/', type=str)
+    parser.add_argument('--data_dir', default='VOC2012/VOCdevkit/VOC2012/', type=str)
 
     ###############################################################################
     # Network
     ###############################################################################
     parser.add_argument('--architecture', default='Seg_Model', type=str)
-    parser.add_argument('--backbone', default='resnest101', type=str)
+    parser.add_argument('--backbone', default='resnest50', type=str)
     parser.add_argument('--mode', default='fix', type=str)
     parser.add_argument('--use_gn', default=True, type=str2bool)
     #"backbone": {"_type":"choice","_value":["resnet50","resnet101","resnest50","resnest101"]},
@@ -80,9 +79,9 @@ def get_params():
     ###############################################################################
     parser.add_argument('--batch_size', default=32, type=int)
     #parser.add_argument('--batch_size', default=8, type=int)
-    parser.add_argument('--max_epoch', default=20, type=int)
+    parser.add_argument('--max_epoch', default=20, type=int)#***********调
 
-    parser.add_argument('--lr', default=0.01, type=float)
+    parser.add_argument('--lr', default=0.01, type=float)#***********调
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
 
@@ -95,17 +94,18 @@ def get_params():
     parser.add_argument('--alpha_final', default=0.5, type=float)
     # parser.add_argument('--sal_or_q', default=False, type=str2bool)
     parser.add_argument('--loss_mask', default=1.0, type=float)
-    parser.add_argument('--tao', default=0.5, type=float)
+    parser.add_argument('--tao', default=0.4, type=float)
 
     ###############################################################################
     # others
     ###############################################################################
-    parser.add_argument('--withQ', default=True, type=str2bool)
-    parser.add_argument('--Qloss_rtime', default=2, type=int)
+    parser.add_argument('--withQ', default=False, type=str2bool)#***********改
+    parser.add_argument('--Qmodelpath', default='experiments/models/modelbest18.pth', type=str)#***********改
+    parser.add_argument('--Qloss_rtime', default=1, type=int)
 
     parser.add_argument('--print_ratio', default=0.1, type=float)
 
-    parser.add_argument('--tag', default='Q_cams_nni2', type=str)
+    parser.add_argument('--tag', default='baseline_noQ', type=str)
 
     args, _ = parser.parse_known_args()
     return args
@@ -117,9 +117,9 @@ def main(args):
     # Arguments
     ###################################################################################
     if(args['withQ']):
-        evaluatorA=evaluator.evaluator(domain='train_600',first_check=(320,65),scale_list=[0.5,1,1.5,2.0])
+        evaluatorA=evaluator.evaluator(domain='train')
     else:
-        evaluatorA=evaluator.evaluator(domain='train_600',withQ=True,first_check=(320,65),scale_list=[0.5,1,1.5,2.0])
+        evaluatorA=evaluator.evaluator(domain='train',withQ=False)
     
     tensorboard_dir = create_directory(f'./experiments/tensorboards/{args["tag"]}/{TIMESTAMP}/')   
 
@@ -177,7 +177,7 @@ def main(args):
     
     # train_dataset = VOC_Dataset_For_WSSS(args["data_dir, 'train_aug', 'VOC2012/VOCdevkit/VOC2012/saliency_map/', train_transform)
     train_dataset = VOC_Dataset_For_MNSS(
-        args["data_dir"], 'VOC2012/saliency_map/' ,'train_aug',train_transform)
+        args["data_dir"], 'VOC2012/VOCdevkit/VOC2012/saliency_map/' ,'train_aug',train_transform)
     # valid_dataset = VOC_Dataset_For_Segmentation(args["data_dir, 'train', test_transform)
     valid_dataset = VOC_Dataset_For_Testing_CAM(args["data_dir"], 'train', test_transform)
 
@@ -201,7 +201,7 @@ def main(args):
 
     if(args['withQ']):
         Q_model = fcnmodel.SpixelNet1l_bn().cuda()
-        Q_model.load_state_dict(torch.load('experiments/models/modelbest17.pth'))
+        Q_model.load_state_dict(torch.load(args['Qmodelpath']))
         Q_model = nn.DataParallel(Q_model)
         Q_model.eval()
 
@@ -423,7 +423,7 @@ def main(args):
         if (iteration + 1) % val_iteration == 0:
             #mIoU, threshold = evaluate(valid_loader)
             #best_mIoU,best_th = evaluate(valid_loader)
-            mIoU,re_th = evaluatorA.evaluate(model,'experiments/models/modelbest17.pth')
+            mIoU,re_th = evaluatorA.evaluate(model,args['Qmodelpath'])
             refine,threshold=re_th
             if best_valid_mIoU == -1 or best_valid_mIoU < mIoU:
                 best_valid_mIoU = mIoU

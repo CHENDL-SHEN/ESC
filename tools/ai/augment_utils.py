@@ -57,6 +57,10 @@ class RandomResize_For_Segmentation:
         else:
             data['image'] = image.resize(size, Image.BICUBIC)
             data['mask'] = mask.resize(size, Image.NEAREST)
+            if('cam' in data.keys()):# cv2.imwrite('1.png',data['cam'].transpose(1,2,0)[:,:,0]*100)
+                # cv2.imwrite('1.png',np.array(data['image']))
+                data['cam'] =  cv2.resize(data['cam'],size)
+
 
         return data
 
@@ -79,6 +83,8 @@ class RandomHorizontalFlip_For_Segmentation:
         if bool(random.getrandbits(1)):
             data['image'] = image.transpose(Image.FLIP_LEFT_RIGHT)
             data['mask'] = mask.transpose(Image.FLIP_LEFT_RIGHT)
+            if('cam' in data.keys()):
+                data['cam'] =  cv2.flip(data['cam'],flipCode=1)
 
         return data
 
@@ -282,6 +288,12 @@ class RandomCrop_For_Segmentation(RandomCrop):
         
         data['image'] = cropped_image
         data['mask'] = cropped_mask
+        if('cam' in data.keys()):
+                cropped_cam = np.ones((self.crop_size, self.crop_size,   data['cam'].shape[2]),  data['cam'].dtype) * self.bg_value
+                cropped_cam[:,:0]=1
+                cropped_cam[dst_bbox['ymin']:dst_bbox['ymax'], dst_bbox['xmin']:dst_bbox['xmax']] = \
+                        data['cam'][src_bbox['ymin']:src_bbox['ymax'], src_bbox['xmin']:src_bbox['xmax']]
+                data['cam'] = cropped_cam
         
         return data
 

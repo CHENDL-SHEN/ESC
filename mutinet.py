@@ -1,4 +1,5 @@
 from  evaluator import *
+import psemakeForQ
 
 # Copyright (C) 2020 * Ltd. All rights reserved.
 # author : Sanghyeon Jo <josanghyeokn@gmail.com>
@@ -42,11 +43,11 @@ import sys
 # import models  
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "5,6"
-model = Seg_Model('resnest101', num_classes=20 + 1)
+os.environ["CUDA_VISIBLE_DEVICES"] = "1,3"
+model = Seg_Model('resnest50', num_classes=20 + 1)
 model = model.cuda()
 model.train()
-model.load_state_dict(torch.load('experiments/models/Q_cams_nni2/2021-10-18 09:37:01.pth'))
+model.load_state_dict(torch.load('/media/ders/zhangyumin/PuzzleCAM/experiments/models/baseline_noQ/2021-10-18 16:52:58.pth'))
 
 # network_data = torch.load('/media/ders/zhangyumin/superpixel_fcn/result/VOCAUG/SpixelNet1l_bn_adam_3000000epochs_epochSize6000_b32_lr5e-05_posW0.003_21_09_15_21_42/model_best.tar')
 # print("=> using pre-trained model '{}'".format(network_data['arch']))
@@ -54,7 +55,9 @@ model.load_state_dict(torch.load('experiments/models/Q_cams_nni2/2021-10-18 09:3
 # Q_model.load_state_dict(torch.load('/media/ders/zhangyumin/PuzzleCAM/experiments/models/train_Q_relu.pth'))
 # Q_model = nn.DataParallel(Q_model)
 # Q_model.eval()
-evaluatorA = evaluator(savepng=True,fast_eval=False)
-ret = evaluatorA.evaluate(model,'experiments/models/modelbest17.pth')
+evaluatorA = evaluator(domain='train_aug',withQ=False, savepng=True,save_np=True)
+# evaluatorA = psemakeForQ.evaluator(domain='train_aug',savepng=True,savept=True,th_bg=[0.05,0.1,0.03],th_step=[0.4,0.5,0.6],th_fg=[0.05,0.1,0.2])
+
+ret = evaluatorA.evaluate('experiments/models/baseline_new_eval/2021-10-14 09:59:48.pth','experiments/models/train_Q_withPse/2021-10-20 23:32:42.pth')
 print(ret[0])
 print(ret[1])

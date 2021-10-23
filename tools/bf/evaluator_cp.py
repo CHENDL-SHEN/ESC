@@ -45,7 +45,11 @@ imagenet_mean = [0.485, 0.456, 0.406]
 imagenet_std = [0.229, 0.224, 0.225]
 palette_img_PIL = Image.open(r"/media/ders/zhangyumin/irn-master/VOCdevkit/VOC2012/SegmentationClass/2007_000039.png")
 palette = palette_img_PIL.getpalette()
-
+  # right_mask=~cur_masks_1hot.bool()
+            # right_mask[:,21]=False
+            # nofeat=torch.sum(refine_masks_1hot_up*cur_masks_1hot[:,:21],dim=1,keepdim=True)
+            # nofeat[masks==21]=0
+            # pse_loss=torch.mean(nofeat)#refine_masks_1hot_up[0,:,140,100]
 class evaluator:
     def __init__(self,domain='train') -> None:
         self.cam_dir = None

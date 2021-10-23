@@ -1,0 +1,5 @@
+{
+    "relu_diff":{"_type":"choice","_value":[0]},
+    "K_same":{"_type":"choice","_value":[1]},
+    "relu_t":{"_type": "choice", "_value": [ 0.75]}
+}

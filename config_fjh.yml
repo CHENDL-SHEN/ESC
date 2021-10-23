@@ -5,7 +5,7 @@ maxExecDuration: 150h
 maxTrialNum: 150
 #choice: local, remote
 trainingServicePlatform: local
-searchSpacePath: search_space_trainQ.json
+searchSpacePath: search_space_trainQ_fjh.json
 #choice: true, false
 useAnnotation: false
 tuner:

@@ -40,13 +40,13 @@ from datetime import datetime
 from nni.utils import merge_parameter
 import nni
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,0"
 
 import  core.models as fcnmodel
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
-start_time=datetime.now().strftime('%Y-%m-%d%H:%M:%S')
+start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,0"
 
 parser = argparse.ArgumentParser()
 class DottableDict(dict): 
@@ -77,10 +77,10 @@ def get_params():
     ###############################################################################
     # Hyperparameter
     ###############################################################################
-    parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--max_epoch', default=15, type=int) #***********调#@3
+    parser.add_argument('--batch_size', default=16, type=int)
+    parser.add_argument('--max_epoch', default=12, type=int)
 
-    parser.add_argument('--lr', default=0.0005, type=float) #***********调#@3
+    parser.add_argument('--lr', default=0.0005, type=float)
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
 
@@ -89,17 +89,14 @@ def get_params():
     parser.add_argument('--max_image_size', default=640, type=int)
     parser.add_argument('--downsize', default=16, type=int)
     parser.add_argument('--print_ratio', default=0.1, type=float)
-    parser.add_argument('--th_bg', default=0.1, type=float) #@1 *6  #0.03,0.05,0.1
-    parser.add_argument('--th_step', default=0.4, type=float)#0.4,0.5,0.6
-    parser.add_argument('--th_fg', default=0.05, type=float)#0.1,0.05,0.03
-    parser.add_argument('--relu_t', default=0.75, type=float)#0.75,0.7,0.8
-    parser.add_argument('--K_same', default=1, type=float)#1,2,4,8
-    parser.add_argument('--relu_diff', default=3, type=int) #0,1,2,4,8  
-    parser.add_argument('--domain', default='train', type=str)#***********调#@2
-    parser.add_argument('--pretrain', default=True, type=str2bool)#***********调#@4
-    parser.add_argument('--pse_path', default='experiments/models/baseline_new_eval/2021-10-14 09:59:48npy', type=str)#***********调#@5
-
-    parser.add_argument('--tag', default='train_Q_withPse_SP', type=str)
+    parser.add_argument('--th_bg', default=0.1, type=float)
+    parser.add_argument('--th_step', default=0.4, type=float)
+    parser.add_argument('--th_fg', default=0.05, type=float)
+    parser.add_argument('--relu_t', default=0.8, type=float)
+    parser.add_argument('--K_same', default=1, type=float)
+    parser.add_argument('--K_diff', default=1, type=float)
+    
+    parser.add_argument('--tag', default='train_Q_withPse', type=str)
 
     parser.add_argument('--label_name', default='AffinityNet@Rresnest269@Puzzle@train@beta=10@exp_times=8@rw@crf=0@color', type=str)
     args = parser.parse_args()
@@ -117,80 +114,61 @@ class SetLoss(_Loss):
     self.relu_t=relu_t
     self.relufn =nn.ReLU()
     self.args=args
-    self.class_loss_fn = nn.CrossEntropyLoss().cuda()
-  def forward(self,prob,LABXY_feat_tensor,cams,imgids):
+    self.class_loss_fn = nn.CrossEntropyLoss(ignore_index=21,reduction='mean').cuda()
+
+  def forward(self,prob,LABXY_feat_tensor,masks,imgids):
 
 
+            cur_masks_1hot=label2one_hot_torch(masks, C=22)#masks.max()
 
             loss_guip, loss_sem_guip, loss_pos_guip = compute_semantic_pos_loss( prob,LABXY_feat_tensor,
                                                         pos_weight= 0.003, kernel_size=16)
             # return loss_pos_guip,loss_sem_guip,loss_sem_guip*0
+            
 
-            cur_masks_1hot_dw=poolfeat(cams,prob)
-            cams_bg=cur_masks_1hot_dw.clone()
-            cams_fg=cur_masks_1hot_dw.clone()
-            cams_bg[:,0]=self.args.th_bg#predictions.max()
-            cams_fg[:,0]=self.args.th_bg+self.args.th_step#predictions.max()
-
-            predictions1=torch.argmax(cams_bg,dim=1)
-            predictions2=torch.argmax(cams_fg,dim=1)
-            fgsort = torch.sort(cur_masks_1hot_dw[:,1:],1,True)[0]
-            ignore_masks = predictions1 != predictions2#fgsort[0][0][:,0,0]
-            ignore_masks |= (self.args.th_fg*fgsort[:,0]<fgsort[:,1])&(predictions1>0)#
-            predictions=predictions1.clone()
-            predictions[ignore_masks] =21
-            cur_masks_1hot_dw=label2one_hot_torch(predictions.unsqueeze(1), C=22)#masks.max()
-
+            cur_masks_1hot_dw=poolfeat(cur_masks_1hot,prob)
             refine_masks_1hot,affmat=refine_with_q(cur_masks_1hot_dw,prob,10,with_aff= True)
-            # refine_masks_1hot_up=upfeat(refine_masks_1hot,prob)
+            refine_masks_1hot_up=upfeat(refine_masks_1hot,prob)
             
             b, c, h, w = cur_masks_1hot_dw.shape
             feat_pd = F.pad(cur_masks_1hot_dw, (2, 2, 2, 2), mode='constant', value=0)
             sam_map_list=[]
-            diff_map_list=[]
-            feat_pd[:,0,:2,:]=1
-            feat_pd[:,0,-2:,::]=1
-            feat_pd[:,0,:,:2]=1
-            feat_pd[:,0,:,-2:]=1
+            # diff_map_list=[]
 
             for i in range(5):
                 for j in range(5):
                         ignore_mat=(cur_masks_1hot_dw[:,21]>0.9)|(feat_pd[:,21,i:i+h,j:j+w]>0.9)
-                        abs_dist=torch.max(torch.abs(feat_pd[:,:21,i:i+h,j:j+w]-feat_pd[:,:21,2:2+h,2:2+w]),dim=1)[0]
-                        diff_mat=(abs_dist>0.9)&(~ignore_mat)
-                        diff_map_list.append(diff_mat)
-                        same_mat=(abs_dist<0.01)&(~ignore_mat)
+
+                        # diff_mat=(torch.max(torch.abs(feat_pd[:,:21,i:i+h,j:j+w]-feat_pd[:,:21,2:2+h,2:2+w]),dim=1)[0]>0.9)&(~ignore_mat)
+                        # diff_map_list.append(diff_mat)
+                        same_mat=(torch.max(torch.abs(feat_pd[:,:21,i:i+h,j:j+w]-feat_pd[:,:21,2:2+h,2:2+w]),dim=1)[0]<0.01)&(~ignore_mat)
                         sam_map_list.append(same_mat)
             sam_map=torch.stack(sam_map_list,dim=1)
             # center_mask_map_55=torch.zeros((b,5,5,h,w)).bool()
             # center_mask_map_55[:,1:4,1:4,:,:]=True
             # center_mask_map=center_mask_map_55.reshape((b,25,h,w)).cuda()
 
-            diff_map=torch.stack(diff_map_list,dim=1).detach()
+            # diff_map=torch.stack(diff_map_list,dim=1).detach()
 
             # relu_loss_diff2=torch.sum(affmat[diff_map])
             # diff_map[center_mask_map]=False   
 
-            # cv2.imwrite('1.png',cams[5][0].detach().cpu().numpy()*255)   # cv2.imwrite('2.png',ignore_masks[5].detach().cpu().numpy()*255)
+            # cv2.imwrite('1.png',cur_masks_1hot[5][0].detach().cpu().numpy()*255)   # cv2.imwrite('2.png',refine_with_q(cur_masks_1hot,prob,15)[5][0].detach().cpu().numpy()*255)
             # cv2.imwrite('4.png',(torch.sum(diff_map[5],dim=0)>1).detach().cpu().numpy()*255) # poolfeat(cur_masks_1hot,prob)[5,:,16,15]  
 
             # sam_map_bf=(sam_map*(cur_masks_1hot_dw[:,21:]==0))#affmat[0,:,10,10].reshape(b,5,5,h,w)[:,1:4,1:4])
             # sam_map*=center_mask_map
-            center_relu_map= (torch.sum(sam_map,dim=1)>15)#diff_map.sum()/8
-            center_diff_relu_map= (torch.sum(diff_map,dim=1)>self.args.relu_diff) #cv2.imwrite('1.png',center_diff_relu_map[5].detach().cpu().numpy()*100)  
+            center_relu_map= (torch.sum(sam_map,dim=1)>15)
             # relu_loss_sam=torch.sum(self.relufn(((0.001-affmat)*sam_map)))#torch.sum(affmat,dim=1)affmat[:,12].max()
 
             loss3= torch.sum(self.relufn(((affmat[:,12]-self.args.relu_t)*center_relu_map)))/b
-            pse_loss=torch.sum(self.relufn(((torch.sum(affmat*diff_map,dim=1))*center_diff_relu_map)))/b
-            # nofeat=~cur_masks_1hot_dw.bool()
-            #  =torch.sum(nofeat*refine_masks_1hot)/b
-            # nofeat[:,21]=False 
-            # refine_masks_1hot+=refine_masks_1hot[:,21:].repeat(1,22,1,1)*cur_masks_1hot_dw.bool()# refine_masks_1hot[0,:21,10,10].sum(dim=1).max() predictions[0,10,10].max()
-            # logit = torch.log(refine_masks_1hot[:, :21, :, :] + 1e-8)
-            # pse_loss = - torch.sum(logit * cur_masks_1hot_dw[:, :21, :, :]) / b
+
+            refine_masks_1hot_up+=refine_masks_1hot_up[:,21:].repeat(1,22,1,1)*cur_masks_1hot.bool()
+            pse_loss=self.class_loss_fn(refine_masks_1hot_up[:,:21],masks.squeeze(1))/b
+            # refine_masks_1hot[:,21]=0
 
 
-            return loss_guip,loss3*self.args.K_same,pse_loss*self.args.K_same
+            return loss_guip,loss3*self.args.K_same,pse_loss*self.args.K_diff
             
 def main(args):
     # evaluatorA=evaluator.evaluator(domain='train_100')
@@ -252,14 +230,14 @@ def main(args):
     
     # train_dataset = VOC_Dataset_For_WSSS(args.data_dir, 'train_aug', pred_dir, train_transform)
     cfg =(args.th_bg,args.th_step,args.th_fg)
-    # pse_path='/media/ders/zhangyumin/PuzzleCAM/experiments/res/psefortrainQ/'+str(cfg)+'/'
-    # pse_path='experiments/models/baseline_new_eval/2021-10-14 09:59:48npy'
+    pse_path='/media/ders/zhangyumin/PuzzleCAM/experiments/res/psefortrainQ/'+str(cfg)+'/'
+    # pse_path='/media/ders/zhangyumin/PuzzleCAM/VOC2012/VOCdevkit/VOC2012/SegmentationClass/'
 
-    train_dataset = VOC_Dataset_For_trainQ_withcam(
-        args.data_dir, 'VOC2012/VOCdevkit/VOC2012/saliency_map/',args.pse_path,args.domain,train_transform)
+    train_dataset = VOC_Dataset_For_trainQ(
+        args.data_dir, 'VOC2012/VOCdevkit/VOC2012/saliency_map/',pse_path,'train',train_transform)
     valid_dataset = VOC_Dataset_For_Segmentation(args.data_dir, 'train', test_transform)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=False, drop_last=True)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True, drop_last=True)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=1, shuffle=False, drop_last=True)
     
     log_func('[i] mean values is {}'.format(imagenet_mean))
@@ -268,7 +246,6 @@ def main(args):
     log_func('[i] train_transform is {}'.format(train_transform))
     log_func()
 
-    nn = 4 if(args.domain=='train') else 1
     val_iteration =4*len(train_loader)
     log_iteration = int(val_iteration * args.print_ratio)
     max_iteration = args.max_epoch * val_iteration
@@ -280,10 +257,10 @@ def main(args):
     ###################################################################################
     # Network
     ###################################################################################
-    network_data = torch.load('/media/ders/zhangyumin/superpixel_fcn/result/VOCAUG/SpixelNet1l_bn_adam_3000000epochs_epochSize6000_b32_lr5e-05_posW0.003_21_09_15_21_42/model_best.tar')
-    model = fcnmodel.SpixelNet1l_bn(data=network_data).cuda()
-    if(args.pretrain):
-        model.load_state_dict(torch.load('experiments/models/modelbest18.pth'))
+    # network_data = torch.load('/media/ders/zhangyumin/superpixel_fcn/result/VOCAUG/SpixelNet1l_bn_adam_3000000epochs_epochSize6000_b32_lr5e-05_posW0.003_21_09_15_21_42/model_best.tar')
+
+    model = fcnmodel.SpixelNet1l_bn().cuda()
+    model.load_state_dict(torch.load('experiments/models/modelbest18.pth'))
 
 
     model = torch.nn.DataParallel(model).cuda()
@@ -455,7 +432,7 @@ def main(args):
     # print(mIoU,re_th)
     for iteration in range(max_iteration):
         # mIoU, _ = evaluate(valid_loader) 
-        images, imgids,tags,sailencys,cams= train_iterator.get()
+        images, imgids,tags,sailencys,masks= train_iterator.get()
         tags = tags.cuda()
         b,c,w,h=images.shape
         #################################################################################################
@@ -471,8 +448,9 @@ def main(args):
 
         #
         sailencys = sailencys.cuda().view(sailencys.shape[0],1,sailencys.shape[1],sailencys.shape[2])/255.0
-        labels =(sailencys>0.2).long() 
-        cams = cams.cuda()
+        labels =(sailencys>0.2).long() #cv2.imwrite('2.png',masks[5].detach().cpu().numpy()*10)
+        masks = masks.cuda().unsqueeze(1)
+        masks[masks==255]=21
          #cv2.imwrite('1.png',labels[9][0].detach().cpu().numpy()*255)
          #cv2.imwrite('2.png',masks[9][0].detach().cpu().numpy()*255)
 
@@ -482,7 +460,7 @@ def main(args):
         LABXY_feat_tensor = build_LABXY_feat(label_1hot, XY_feat_stack)  # B* (50+2 )* H * W
 
 
-        reloss=setloss(prob,LABXY_feat_tensor,cams,imgids)
+        reloss=setloss(prob,LABXY_feat_tensor,masks,imgids)
         loss_s=torch.mean(reloss[0])
         loss_p=torch.mean(reloss[1])
         relu_loss=torch.mean(reloss[2])

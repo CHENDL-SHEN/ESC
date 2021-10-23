@@ -19,6 +19,7 @@ from tools.general.xml_utils import read_xml
 from tools.general.json_utils import read_json
 from tools.dataset.voc_utils import get_color_map_dic
 
+
 class Iterator:
     def __init__(self, loader):
         self.loader = loader
@@ -26,15 +27,16 @@ class Iterator:
 
     def init(self):
         self.iterator = iter(self.loader)
-    
+
     def get(self):
         try:
             data = next(self.iterator)
         except StopIteration:
             self.init()
             data = next(self.iterator)
-        
+
         return data
+
 
 class VOC_Dataset(torch.utils.data.Dataset):
     def __init__(self, root_dir, domain, with_id=False, with_tags=False, with_mask=False):
@@ -42,14 +44,14 @@ class VOC_Dataset(torch.utils.data.Dataset):
 
         self.image_dir = self.root_dir + 'JPEGImages/'
         self.xml_dir = self.root_dir + 'Annotations/'
-        self.mask_dir = self.root_dir + 'SegmentationClass/'
+        self.mask_dir = self.root_dir + 'SegmentationClassAug/'
 
-        
-        if(type(domain)==str):
-            self.image_id_list = [image_id.strip() for image_id in open('./data/%s.txt'%domain).readlines()]
+        if(type(domain) == str):
+            self.image_id_list = [image_id.strip() for image_id in open(
+                './data/%s.txt' % domain).readlines()]
         else:
-             self.image_id_list=domain
-        
+            self.image_id_list = domain
+
         self.with_id = with_id
         self.with_tags = with_tags
         self.with_mask = with_mask
@@ -59,7 +61,7 @@ class VOC_Dataset(torch.utils.data.Dataset):
 
     def get_image(self, image_id):
         image = Image.open(self.image_dir + image_id + '.jpg').convert('RGB')
-        return image 
+        return image
 
     def get_mask(self, image_id):
         mask_path = self.mask_dir + image_id + '.png'
@@ -72,7 +74,7 @@ class VOC_Dataset(torch.utils.data.Dataset):
     def get_tags(self, image_id):
         _, tags = read_xml(self.xml_dir + image_id + '.xml')
         return tags
-    
+
     def __getitem__(self, index):
         image_id = self.image_id_list[index]
 
@@ -86,8 +88,9 @@ class VOC_Dataset(torch.utils.data.Dataset):
 
         if self.with_mask:
             data_list.append(self.get_mask(image_id))
-        
+
         return data_list
+
 
 class VOC_Dataset_For_Classification(VOC_Dataset):
     def __init__(self, root_dir, domain, transform=None):
@@ -105,8 +108,10 @@ class VOC_Dataset_For_Classification(VOC_Dataset):
         if self.transform is not None:
             image = self.transform(image)
 
-        label = one_hot_embedding([self.class_dic[tag] for tag in tags], self.classes)
+        label = one_hot_embedding([self.class_dic[tag]
+                                  for tag in tags], self.classes)
         return image, label
+
 
 class VOC_Dataset_For_Segmentation(VOC_Dataset):
     def __init__(self, root_dir, domain, transform=None):
@@ -114,42 +119,47 @@ class VOC_Dataset_For_Segmentation(VOC_Dataset):
         self.transform = transform
 
         cmap_dic, _, class_names = get_color_map_dic()
-        self.colors = np.asarray([cmap_dic[class_name] for class_name in class_names])
-    
+        self.colors = np.asarray([cmap_dic[class_name]
+                                 for class_name in class_names])
+
     def __getitem__(self, index):
         image, mask = super().__getitem__(index)
 
         if self.transform is not None:
-            input_dic = {'image':image, 'mask':mask}
+            input_dic = {'image': image, 'mask': mask}
             output_dic = self.transform(input_dic)
 
             image = output_dic['image']
             mask = output_dic['mask']
-        
+
         return image, mask
+
 
 class VOC_Dataset_For_Evaluation(VOC_Dataset):
     def __init__(self, root_dir, domain, transform=None):
-        super().__init__(root_dir, domain,with_tags=True, with_id=True, with_mask=True)
+        super().__init__(root_dir, domain, with_tags=True, with_id=True, with_mask=True)
         self.transform = transform
         data = read_json('./data/VOC_2012.json')
         self.class_dic = data['class_dic']
         self.classes = data['classes']
         cmap_dic, _, class_names = get_color_map_dic()
-        self.colors = np.asarray([cmap_dic[class_name] for class_name in class_names])
+        self.colors = np.asarray([cmap_dic[class_name]
+                                 for class_name in class_names])
 
     def __getitem__(self, index):
-        image, image_id, tags,mask = super().__getitem__(index)
+        image, image_id, tags, mask = super().__getitem__(index)
 
         if self.transform is not None:
-            input_dic = {'image':image, 'mask':mask}
+            input_dic = {'image': image, 'mask': mask}
             output_dic = self.transform(input_dic)
 
             image = output_dic['image']
             mask = output_dic['mask']
-        label = one_hot_embedding([self.class_dic[tag]+1 for tag in tags], self.classes+1)
-        label[0]=1
-        return image, image_id,label, mask
+        label = one_hot_embedding(
+            [self.class_dic[tag]+1 for tag in tags], self.classes+1)
+        label[0] = 1
+        return image, image_id, label, mask
+
 
 class VOC_Dataset_For_WSSS(VOC_Dataset):
     def __init__(self, root_dir, domain, pred_dir, transform=None):
@@ -158,20 +168,22 @@ class VOC_Dataset_For_WSSS(VOC_Dataset):
         self.transform = transform
 
         cmap_dic, _, class_names = get_color_map_dic()
-        self.colors = np.asarray([cmap_dic[class_name] for class_name in class_names])
-    
+        self.colors = np.asarray([cmap_dic[class_name]
+                                 for class_name in class_names])
+
     def __getitem__(self, index):
         image, image_id = super().__getitem__(index)
         mask = Image.open(self.pred_dir + image_id + '.png')
-        
+
         if self.transform is not None:
-            input_dic = {'image':image, 'mask':mask}
+            input_dic = {'image': image, 'mask': mask}
             output_dic = self.transform(input_dic)
 
             image = output_dic['image']
             mask = output_dic['mask']
-        
+
         return image, mask
+
 
 class VOC_Dataset_For_MNSS(VOC_Dataset):
     def __init__(self, root_dir, pse_dir, domain, transform=None):
@@ -179,19 +191,20 @@ class VOC_Dataset_For_MNSS(VOC_Dataset):
         self.transform = transform
         self.pse_dir = pse_dir
         cmap_dic, _, class_names = get_color_map_dic()
-        self.colors = np.asarray([cmap_dic[class_name] for class_name in class_names])
-                
+        self.colors = np.asarray([cmap_dic[class_name]
+                                 for class_name in class_names])
+
         data = read_json('./data/VOC_2012.json')
         self.class_dic = data['class_dic']
         self.classes = data['classes']
 
     def __getitem__(self, index):
-        image, image_id ,tags= super().__getitem__(index)
+        image, image_id, tags = super().__getitem__(index)
         size = image.size
         pse_mask = Image.open(self.pse_dir + image_id + '.png').convert('L')
         if self.transform is not None:
             # input_dic = {'image':image, 'mask':mask}
-            input_dic2 = {'image':image, 'mask':pse_mask}
+            input_dic2 = {'image': image, 'mask': pse_mask}
 
             # output_dic = self.transform(input_dic)
             # mask = output_dic['mask']
@@ -200,11 +213,90 @@ class VOC_Dataset_For_MNSS(VOC_Dataset):
 
             # image = output_dic['image']
 
+            pse_mask = output_dic['mask']
+        label = one_hot_embedding(
+            [self.class_dic[tag]+1 for tag in tags], self.classes+1)
+        label[0] = 1
+        return image, image_id, label, pse_mask, pse_mask
 
-            pse_mask=output_dic['mask']
-        label = one_hot_embedding([self.class_dic[tag]+1 for tag in tags], self.classes+1)
-        label[0]=1
-        return image, image_id, label, pse_mask,pse_mask
+
+class VOC_Dataset_For_trainQ(VOC_Dataset):
+    def __init__(self, root_dir, sal_dir, pse_dir, domain, transform=None):
+        super().__init__(root_dir, domain, with_id=True, with_tags=True)
+        self.transform = transform
+        self.sal_dir = sal_dir
+        self.pse_dir = pse_dir
+        cmap_dic, _, class_names = get_color_map_dic()
+        self.colors = np.asarray([cmap_dic[class_name]
+                                 for class_name in class_names])
+        data = read_json('./data/VOC_2012.json')
+        self.class_dic = data['class_dic']
+        self.classes = data['classes']
+
+    def __getitem__(self, index):
+        image, image_id, tags = super().__getitem__(index)
+        size = image.size
+        pse_mask = Image.open(self.pse_dir + image_id + '.png')
+        sal_mask = Image.open(self.sal_dir + image_id + '.png').convert('L')
+        pse_mask_np = np.asarray(pse_mask)
+        sal_mask_np = np.asarray(sal_mask)
+        sal_mask_np = sal_mask_np/(sal_mask_np.max()+1e-5)
+        sal_mask_np = sal_mask_np > 0.2
+        inarray = pse_mask_np.copy()
+        inarray[inarray == 255] = 21
+        inarray[sal_mask_np] += 200
+        inarray_pil = Image.fromarray(inarray)  # np.asarray(inarray_pil)
+        if self.transform is not None:
+            input_dic = {'image': image, 'mask': inarray_pil}
+            output_dic = self.transform(input_dic)
+            image = output_dic['image']
+            out_mask = output_dic['mask']
+            pse_mask = out_mask.copy()
+            sal_mask = out_mask.copy()
+            pse_mask[out_mask >= 200] -= 200
+            pse_mask[pse_mask == 21] = 255
+
+            sal_mask = (out_mask > 100)*255
+
+        label = one_hot_embedding(
+            [self.class_dic[tag]+1 for tag in tags], self.classes+1)
+        label[0] = 1
+        return image, image_id, label, sal_mask, pse_mask
+
+
+class VOC_Dataset_For_trainQ_withcam(VOC_Dataset):
+    def __init__(self, root_dir, sal_dir, pse_dir, domain, transform=None):
+        super().__init__(root_dir, domain, with_id=True, with_tags=True)
+        self.transform = transform
+        self.sal_dir = sal_dir
+        self.pse_dir = pse_dir
+        cmap_dic, _, class_names = get_color_map_dic()
+        self.colors = np.asarray([cmap_dic[class_name]
+                                 for class_name in class_names])
+        data = read_json('./data/VOC_2012.json')
+        self.class_dic = data['class_dic']
+        self.classes = data['classes']
+        self.scale_list = [0.5, 1, 1.5, 2.0, -0.5, -1, -1.5, -2.0]  # - is flip
+
+    def __getitem__(self, index):
+        image, image_id, tags = super().__getitem__(index)
+        size = image.size
+        sal_mask = Image.open(self.sal_dir + image_id + '.png').convert('L')
+        cam = np.load(os.path.join(self.pse_dir, image_id+'.npy'))[0].transpose(1,2,0)
+
+        if self.transform is not None:
+            input_dic = {'image': image, 'mask': sal_mask, 'cam': cam}
+            output_dic = self.transform(input_dic)
+            image = output_dic['image']
+            sal_mask = output_dic['mask']
+            cam=output_dic['cam'].transpose(2,0,1)# cv2.imwrite('1.png',cam[0]*255)
+                #cv2.imwrite('1.png',output_dic['image'][0]*255)
+           
+        label = one_hot_embedding(
+            [self.class_dic[tag]+1 for tag in tags], self.classes+1)
+        label[0] = 1
+        return image, image_id, label, sal_mask,cam
+
 
 class VOC_Dataset_For_Testing_CAM(VOC_Dataset):
     def __init__(self, root_dir, domain, transform=None):
@@ -212,8 +304,9 @@ class VOC_Dataset_For_Testing_CAM(VOC_Dataset):
         self.transform = transform
 
         cmap_dic, _, class_names = get_color_map_dic()
-        self.colors = np.asarray([cmap_dic[class_name] for class_name in class_names])
-        
+        self.colors = np.asarray([cmap_dic[class_name]
+                                 for class_name in class_names])
+
         data = read_json('./data/VOC_2012.json')
 
         self.class_dic = data['class_dic']
@@ -223,22 +316,25 @@ class VOC_Dataset_For_Testing_CAM(VOC_Dataset):
         image, tags, mask = super().__getitem__(index)
 
         if self.transform is not None:
-            input_dic = {'image':image, 'mask':mask}
+            input_dic = {'image': image, 'mask': mask}
             output_dic = self.transform(input_dic)
 
             image = output_dic['image']
             mask = output_dic['mask']
-        
-        label = one_hot_embedding([self.class_dic[tag] for tag in tags], self.classes)
+
+        label = one_hot_embedding([self.class_dic[tag]
+                                  for tag in tags], self.classes)
         return image, label, mask
+
 
 class VOC_Dataset_For_Making_CAM(VOC_Dataset):
     def __init__(self, root_dir, domain):
         super().__init__(root_dir, domain, with_id=True, with_tags=True, with_mask=True)
 
         cmap_dic, _, class_names = get_color_map_dic()
-        self.colors = np.asarray([cmap_dic[class_name] for class_name in class_names])
-        
+        self.colors = np.asarray([cmap_dic[class_name]
+                                 for class_name in class_names])
+
         data = read_json('./data/VOC_2012.json')
 
         self.class_names = np.asarray(class_names[1:21])
@@ -248,8 +344,10 @@ class VOC_Dataset_For_Making_CAM(VOC_Dataset):
     def __getitem__(self, index):
         image, image_id, tags, mask = super().__getitem__(index)
 
-        label = one_hot_embedding([self.class_dic[tag] for tag in tags], self.classes)
+        label = one_hot_embedding([self.class_dic[tag]
+                                  for tag in tags], self.classes)
         return image, image_id, label, mask
+
 
 class VOC_Dataset_For_Affinity(VOC_Dataset):
     def __init__(self, root_dir, domain, path_index, label_dir, transform=None):
@@ -265,16 +363,16 @@ class VOC_Dataset_For_Affinity(VOC_Dataset):
         self.label_dir = label_dir
         self.path_index = path_index
 
-        self.extract_aff_lab_func = GetAffinityLabelFromIndices(self.path_index.src_indices, self.path_index.dst_indices)
+        self.extract_aff_lab_func = GetAffinityLabelFromIndices(
+            self.path_index.src_indices, self.path_index.dst_indices)
 
     def __getitem__(self, idx):
         image, image_id = super().__getitem__(idx)
 
         label = imageio.imread(self.label_dir + image_id + '.png')
         label = Image.fromarray(label)
-        
-        output_dic = self.transform({'image':image, 'mask':label})
-        image, label = output_dic['image'], output_dic['mask']
-        
-        return image, self.extract_aff_lab_func(label)
 
+        output_dic = self.transform({'image': image, 'mask': label})
+        image, label = output_dic['image'], output_dic['mask']
+
+        return image, self.extract_aff_lab_func(label)

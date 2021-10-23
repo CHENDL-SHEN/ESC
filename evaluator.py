@@ -1,6 +1,6 @@
 from operator import mod
 import os
-from pickle import NONE, TRUE
+from pickle import FALSE, NONE, TRUE
 import sys
 import copy
 import shutil
@@ -43,22 +43,23 @@ import  core.models as fcnmodel
 ###################################################################################
 imagenet_mean = [0.485, 0.456, 0.406]
 imagenet_std = [0.229, 0.224, 0.225]
-palette_img_PIL = Image.open(r"VOC2012/SegmentationClass/2007_000033.png")
+palette_img_PIL = Image.open(r"VOC2012/VOCdevkit/VOC2012/SegmentationClass/2007_000033.png")
 palette = palette_img_PIL.getpalette()
 
 class evaluator:
-    def __init__(self,domain='train',withQ=True,savept=False,savepng=False,fast_eval=True,first_check=(320,70.5),scale_list=[0.5,1,1.5,2.0,-0.5,-1,-1.5,-2.0]) -> None:
+    def __init__(self,domain='train',withQ=True,save_np=False,savepng=False,fast_eval=False,first_check=(320,60.5)) -> None:
         self.C_model = None
         self.Q_model = None
         self.proxy_Q_model =None
         self.with_Q =withQ
+        self.first_check = first_check
 
 
         self.fast_eval =fast_eval#eval的时候会缩小尺寸，精度会有所偏差
-        self.first_check = first_check
-
         self.scale_list  = [0.5,1,1.5,2.0,-0.5,-1,-1.5,-2.0]#- is flip
-        self.scale_list  = scale_list
+        if(self.fast_eval):
+            self.scale_list  = [0.5,1,1.5,2.0]#- is flip
+
 
         self.th_list = [0.25,0.3]
         #self.refine_list = [0]
@@ -78,10 +79,12 @@ class evaluator:
         
         self.batch_size = 8
         self.Top_Left_Crop =False
-        self.savept   = savept
+        self.savept   = False
         self.ptsave_path=[None,None,None]
         self.savepng   = savepng
         self.save_path='experiments/res/cam_test2/'
+        self.save_np=save_np
+        self.save_np_path=None
         if not os.path.exists( self.save_path):
                 os.mkdir(self.save_path)
         self.tag    = 'test'
@@ -98,7 +101,7 @@ class evaluator:
             Transpose_For_Segmentation()
             ])
             self.batch_size = 1 
-        valid_dataset =VOC_Dataset_For_Evaluation('VOC2012/', self.domain, test_transform)
+        valid_dataset =VOC_Dataset_For_Evaluation('VOC2012/VOCdevkit/VOC2012/', self.domain, test_transform)
         self.valid_loader = DataLoader(valid_dataset, batch_size= self.batch_size, num_workers=1, shuffle=False, drop_last=True)
         pass
 
@@ -150,7 +153,7 @@ class evaluator:
             scaled_images = F.interpolate(scaled_images, (H_,W_), mode='bilinear', align_corners=False)
             refine_Q=model(scaled_images)
         return Q_list,refine_Q
-    def getpse(self,cam_list,Q_list,tags):
+    def getpse(self,cam_list,Q_list,tags,ids):
         _,_,h,w=Q_list[self.scale_list.index(1.0)].shape
         refine_cam_list=[]
         for cam,Q,s in zip(cam_list,Q_list,self.scale_list):
@@ -160,7 +163,9 @@ class evaluator:
                 if(s<0):
                    cam = torch.flip(cam,dims=[3])#?dims 
                 refine_cam_list.append(cam)
+      
         refine_cam=torch.sum(torch.stack(refine_cam_list),dim=0)
+
 
         return refine_cam
     def getbest_miou(self,clear=True):
@@ -188,6 +193,10 @@ class evaluator:
                         if not os.path.exists(modelpt_path):
                             os.mkdir(modelpt_path)
                         path_files=glob.glob(pathname=modelpt_path+'*.pt') 
+                        if(self.save_np and i==0):
+                            self.save_np_path=model_list[i][:-4]+'npy/'
+                            if not os.path.exists(self.save_np_path):
+                                os.mkdir(self.save_np_path)
                         if(len(path_files)>= len(self.valid_loader)):
                             model_list[i]=modelpt_path
                         else:
@@ -202,6 +211,7 @@ class evaluator:
                             model_list[i].eval()
                             if(self.savept):
                                 self.ptsave_path[i]=modelpt_path
+                          
             self.C_model,self.Q_model,self.proxy_Q_model =model_list
 
             with torch.no_grad():
@@ -220,7 +230,7 @@ class evaluator:
                     cams = self.get_cam(images,image_ids)
                     torch.cuda.synchronize()
 
-                    cams = self.getpse(cams,Qs,tags)
+                    cams = self.getpse(cams,Qs,tags,image_ids)
                     t3=time.time()
 
 
@@ -233,11 +243,14 @@ class evaluator:
                         if(self.with_Q):
                             refine_cam= refine_with_q(refine_cam,refinQ,refinetime)
                         cams = (make_cam(refine_cam) * mask)
+
                         if not self.Top_Left_Crop:
                             resc=1
                             if(self.fast_eval):
                                     resc=2
                             cams = F.interpolate(cams,(int(h/resc),int(w/resc)), mode='bilinear', align_corners=False)
+                        if(self.save_np):
+                            np.save(os.path.join(self.save_np_path,image_ids[0]+'.npy'),cams.cpu().numpy())
                         for th in self.th_list:
                             cams[:,0]=th#predictions.max()
                             predictions=torch.argmax(cams,dim=1)

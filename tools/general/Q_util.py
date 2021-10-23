@@ -12,7 +12,7 @@ from connectivity import enforce_connectivity
     
 init_turn_grid =None
 
-def compute_semantic_pos_loss(prob_in, labxy_feat,  pos_weight = 0.003,  kernel_size=8):
+def compute_semantic_pos_loss(prob_in, labxy_feat,  pos_weight = 0.003,  kernel_size=16):
     # this wrt the slic paper who used sqrt of (mse)
 
     # rgbxy1_feat: B*50+2*H*W
@@ -41,6 +41,7 @@ def compute_semantic_pos_loss(prob_in, labxy_feat,  pos_weight = 0.003,  kernel_
     loss_pos_sum = 0.005 * loss_pos
 
     return loss_sum, loss_sem_sum,  loss_pos_sum
+
 
 
 
@@ -417,7 +418,7 @@ def label2one_hot_torch(labels, C=14):
             N x C x H x W, where C is class number. One-hot encoded.
         '''
     b,_, h, w = labels.shape
-    one_hot = torch.zeros(b, C, h, w, dtype=torch.long).cuda()
+    one_hot = torch.zeros(b, C, h, w, dtype=torch.long).cuda(labels.device)
     target = one_hot.scatter_(1, labels.type(torch.long).data, 1) #require long type
 
     return target.type(torch.float32)
@@ -450,6 +451,8 @@ def rewith_affmat(input,affmat):
     cat_mat=torch.stack(cat_mat,dim=1)
     return torch.sum(cat_mat*affmat.reshape(b,25,1,h,w),dim=1)
 
+    
+
 def get_turn(area=5):
     def get_in(index):
         centerlist=[(index-10)%25,(index-5)%25,index,(index+5)%25,(index+10)%25]
@@ -465,26 +468,29 @@ def get_turn(area=5):
     return torch.stack(turn_grid)
 
 
-def refine_with_q(input,prob,iter=20,down_size=16):
-    if(iter>0):
-        init_turn_grid=get_turn().reshape(1,25,5,5).cuda()
+def refine_with_q(input,prob,iter=20,down_size=16,with_aff=False):
+    if(iter>0 or with_aff):
+        init_turn_grid=get_turn().reshape(1,25,5,5).cuda(input.device)
         b,c,h,w=prob.shape
-        ini_grid=torch.arange(0,25,1).reshape(1,1,5,5).cuda()
+        ini_grid=torch.arange(0,25,1).reshape(1,1,5,5).cuda(input.device)
         ini_grid=label2one_hot_torch(ini_grid,25)
-        ini_grid=ini_grid.repeat(b,1,int(h/(down_size*5))+1,int(w/(down_size*5))+1)[:,:,:int(h/down_size),:int(w/down_size)]
+        ini_grid=ini_grid.repeat(b,1,int(h/(down_size*5))+1,int(w/(down_size*5))+1)[:,:,:int(h/down_size),:int(w/down_size)].detach()
 
         turn_grid=init_turn_grid.repeat(b,1,int(h/(down_size*5))+1,int(w/(down_size*5))+1)[:,:,:int(h/down_size),:int(w/down_size)]
 
         up_ini_grid= upfeat(ini_grid,prob)
         aff_grid = poolfeat(up_ini_grid,prob)  
         aff_mat = torch.gather(aff_grid,1,turn_grid)
-        if(prob.shape[2]==input.shape[2]):
-            input= poolfeat(input,prob,down_size,down_size)
-            for i in range(iter-1):
-                input= rewith_affmat(input,aff_mat)
-            input = upfeat(input,prob)
-        else:
-            for i in range(iter-1):
-                input= rewith_affmat(input,aff_mat)
+        if(iter>0):
+            if(prob.shape[2]==input.shape[2]):
+                input= poolfeat(input,prob,down_size,down_size)
+                for i in range(iter-1):
+                    input= rewith_affmat(input,aff_mat)
+                input = upfeat(input,prob)
+            else:
+                for i in range(iter-1):
+                    input= rewith_affmat(input,aff_mat)
+        if(with_aff):
+            return input,aff_mat
 
     return input
