@@ -36,7 +36,7 @@ from tools.ai.randaugment import *
 from datetime import datetime
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4,7"
 
 parser = argparse.ArgumentParser()
 
@@ -50,7 +50,7 @@ parser.add_argument('--data_dir', default='VOC2012/VOCdevkit/VOC2012/', type=str
 ###############################################################################
 # Network
 ###############################################################################
-parser.add_argument('--architecture', default='DeepLabv3+', type=str)
+parser.add_argument('--architecture', default='CSeg_Model', type=str)
 parser.add_argument('--backbone', default='resnest101', type=str)
 parser.add_argument('--mode', default='fix', type=str)
 parser.add_argument('--use_gn', default=True, type=str2bool)
@@ -58,7 +58,7 @@ parser.add_argument('--use_gn', default=True, type=str2bool)
 ###############################################################################
 # Hyperparameter
 ###############################################################################
-parser.add_argument('--batch_size', default=32, type=int)
+parser.add_argument('--batch_size', default=4, type=int)
 parser.add_argument('--max_epoch', default=50, type=int)
 
 parser.add_argument('--lr', default=0.007, type=float)

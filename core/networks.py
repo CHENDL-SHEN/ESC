@@ -6,7 +6,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import numpy as np
 from torchvision import models
 import torch.utils.model_zoo as model_zoo
 
@@ -17,7 +17,7 @@ from .deeplab_utils import ASPP, Decoder
 from .aff_utils import PathIndex
 from .puzzle_utils import tile_features, merge_features
 from tools.ai.torch_utils import resize_for_tensors
-
+from tools.general.Q_util import *
 #######################################################################
 # Normalization
 #######################################################################
@@ -119,37 +119,7 @@ class Classifier_For_Positive_Pooling(Backbone):
             x = self.global_average_pooling_2d(x, keepdims=True) 
             logits = self.classifier(x).view(-1, self.num_classes)
             return logits
-
-class Classifier_For_Puzzle(Classifier):
-    def __init__(self, model_name, num_classes=20, mode='fix'):
-        super().__init__(model_name, num_classes, mode)
-        
-    def forward(self, x, num_pieces=1, level=-1):
-        batch_size = x.size()[0]
-        
-        output_dic = {}
-        layers = [self.stage1, self.stage2, self.stage3, self.stage4, self.stage5, self.classifier]
-
-        for l, layer in enumerate(layers):
-            l += 1
-            if level == l:
-                x = tile_features(x, num_pieces)
-
-            x = layer(x)
-            output_dic['stage%d'%l] = x
-        
-        output_dic['logits'] = self.global_average_pooling_2d(output_dic['stage6'])
-
-        for l in range(len(layers)):
-            l += 1
-            if l >= level:
-                output_dic['stage%d'%l] = merge_features(output_dic['stage%d'%l], num_pieces, batch_size)
-
-        if level is not None:
-            output_dic['merged_logits'] = self.global_average_pooling_2d(output_dic['stage6'])
-
-        return output_dic
-        
+       
 class AffinityNet(Backbone):
     def __init__(self, model_name, path_index=None):
         super().__init__(model_name, None, 'fix')
@@ -351,5 +321,44 @@ class CSeg_Model(Backbone):
 
         logits = self.fc_edge6(torch.cat([edge1, edge2, edge3, edge4, edge5], dim=1))
         # logits = resize_for_tensors(logits, x.size()[2:], align_corners=True)
+        
+        return logits
+class SANET_Model(Backbone):
+    def __init__(self, model_name, num_classes=21):
+        super().__init__(model_name, num_classes, mode='fix', segmentation=False)
+        
+
+        all_h_coords = np.arange(0, 32, 1)
+        all_w_coords = np.arange(0, 32, 1)
+        curr_pxl_coord = np.array(np.meshgrid(all_h_coords, all_w_coords, indexing='ij'))
+
+        self.coord_tensor = np.concatenate([curr_pxl_coord[1:2, :, :], curr_pxl_coord[:1, :, :]])
+
+        self.qcov=nn.Conv2d(2048+9+25, 256, 3,padding=1, bias=False)
+        self.classifier = nn.Conv2d(256, num_classes, 1, bias=False)
+
+     
+    
+    def forward(self, inputs,probs):
+        b,c,w,h=probs.shape
+
+        x = self.stage1(inputs)
+        x = self.stage2(x)
+        x = self.stage3(x)
+        x = self.stage4(x)
+        x = self.stage5(x)
+        
+
+        # all_XY_feat = (torch.from_numpy(
+        #     np.tile( self.coord_tensor, (inputs.shape[0], 1, 1, 1)).astype(np.float32)).cuda())
+        # xy22= upfeat(all_XY_feat,probs)
+        # xy22= F.interpolate(xy22,(32,32),mode='bilinear',align_corners=False)
+        # all_sum =torch.ones((b,1,w,h))
+        # all_sum = poolfeat(all_sum,probs)
+        feat_q = getpoolfeatsum(probs) #torch.sum(feat_q,dim=1)
+        _,aff_mat = refine_with_q(None,probs,with_aff=True)
+        x=self.qcov(torch.cat([x,feat_q,aff_mat],dim=1))
+        logits = self.classifier(x)
+        # logits = resize_for_tensors(logits, inputs.size()[2:], align_corners=False)
         
         return logits

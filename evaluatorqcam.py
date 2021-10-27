@@ -63,7 +63,7 @@ class evaluator:
 
         self.th_list = [0.25,0.3,0.35]
         #self.refine_list = [0]
-        self.refine_list = [25,30,35]
+        self.refine_list = [20,25,30]
 
         # self.th_list = [0.3]
         # self.refine_list = [20]
@@ -82,7 +82,7 @@ class evaluator:
         self.savept   = False
         self.ptsave_path=[None,None,None]
         self.savepng   = savepng
-        self.save_path='experiments/res/cam_test2/'
+        self.save_path='experiments/res/cam_test2_qcam/'
         self.save_np=save_np
         self.save_np_path=None
         if not os.path.exists( self.save_path):
@@ -105,14 +105,14 @@ class evaluator:
         self.valid_loader = DataLoader(valid_dataset, batch_size= self.batch_size, num_workers=1, shuffle=False, drop_last=True)
         pass
 
-    def get_cam(self,images,ids):
+    def get_cam(self,images,ids,Qs):
         with torch.no_grad():
             cam_list=[]
             if(type(self.C_model)==str):
                 cam_list = torch.load(os.path.join(self.C_model,ids[0]+'.pt'))
             else:
                 _,_,h,w = images.shape
-                for s in self.scale_list:
+                for s,q in zip(self.scale_list,Qs):
                     target_size = (round(h * abs(s)), round(w* abs(s)))
                     scaled_images = F.interpolate(images,target_size, mode='bilinear', align_corners=False)
                     if not self.Top_Left_Crop:
@@ -121,7 +121,7 @@ class evaluator:
                         scaled_images = F.interpolate(scaled_images, (H_,W_), mode='bilinear', align_corners=False)
                     if(s<0):
                         scaled_images =torch.flip(scaled_images,dims=[3])#?dims
-                    logits=self.C_model(scaled_images)
+                    logits=self.C_model(scaled_images,q)
                     pred=F.softmax(logits,dim=1)
                     cam_list.append(pred)
         if(self.ptsave_path[0]!=None):
@@ -201,7 +201,7 @@ class evaluator:
                             model_list[i]=modelpt_path
                         else:
                             if(i==0):
-                                model_list[i] = Seg_Model('resnest50', num_classes=20 + 1)
+                                model_list[i] = SANET_Model('resnest50', num_classes=20 + 1)
                                 model_list[i] = model_list[i].cuda()
                             elif(i==1):
                                 model_list[i] = fcnmodel.SpixelNet1l_bn().cuda()
@@ -227,7 +227,7 @@ class evaluator:
                     Qs,refinQ = self.get_Q(images,image_ids)
                     torch.cuda.synchronize()
                     t2=time.time()
-                    cams = self.get_cam(images,image_ids)
+                    cams = self.get_cam(images,image_ids,Qs)
                     torch.cuda.synchronize()
 
                     cams = self.getpse(cams,Qs,tags,image_ids)
@@ -258,9 +258,9 @@ class evaluator:
                                 pred_mask = get_numpy_from_tensor(predictions[batch_index])
                                 gt_mask = get_numpy_from_tensor(gt_masks[batch_index])
                                 gt_mask=cv2.resize(gt_mask,(pred_mask.shape[1],pred_mask.shape[0]), interpolation=cv2.INTER_NEAREST)
-                                self.meterlist[self.parms.index((self.refine_list[renum],th))].add(pred_mask, gt_mask)#self.getbest_miou(clear=False)
+                                self.meterlist[self.parms.index((self.refine_list[renum],th))].add(pred_mask, gt_mask)#self.getbest_miou(clear=False) #,self.meterlist[10].get(clear=False)
                                 if(self.savepng):
-                                    if(self.C_model!=None):
+                                    if(self.C_model!=None and (self.refine_list[renum],th)==(30,0.3) ):
                                         img_path=os.path.join(self.save_path,image_ids[batch_index]+'.png')
                                         img_pil2= Image.fromarray(pred_mask.astype(np.uint8))
                                         img_pil2.putpalette(palette)

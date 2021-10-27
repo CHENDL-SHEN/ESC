@@ -40,7 +40,7 @@ from datetime import datetime
 from nni.utils import merge_parameter
 import nni
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "2,3,6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "7,6,1,2,3"
 
 import  core.models as fcnmodel
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
@@ -77,10 +77,10 @@ def get_params():
     ###############################################################################
     # Hyperparameter
     ###############################################################################
-    parser.add_argument('--batch_size', default=12, type=int)
+    parser.add_argument('--batch_size', default=4, type=int)
     parser.add_argument('--max_epoch', default=15, type=int) #***********调#@3
 
-    parser.add_argument('--lr', default=0.0005, type=float) #***********调#@3
+    parser.add_argument('--lr', default=0.001, type=float) #***********调#@3
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
 
@@ -89,19 +89,17 @@ def get_params():
     parser.add_argument('--max_image_size', default=640, type=int)
     parser.add_argument('--downsize', default=16, type=int)
     parser.add_argument('--print_ratio', default=0.1, type=float)
-    parser.add_argument('--th_bg', default=0.05, type=float) #@1 *6  #0.03,0.05,0.1
-    parser.add_argument('--th_step', default=0.5, type=float)#0.4,0.5,0.6
+    parser.add_argument('--th_bg', default=0.1, type=float) #@1 *6  #0.03,0.05,0.1
+    parser.add_argument('--th_step', default=0.4, type=float)#0.4,0.5,0.6
     parser.add_argument('--th_fg', default=0.05, type=float)#0.1,0.05,0.03
     parser.add_argument('--relu_t', default=0.75, type=float)#0.75,0.7,0.8
-    parser.add_argument('--K_same', default=2.01, type=float)#1,2,4,8
-    parser.add_argument('--K_diff', default=2.01, type=float)#1,2,4,8
-
-    parser.add_argument('--relu_diff', default=0, type=int) #0,1,2,4,8  
+    parser.add_argument('--K_same', default=2, type=float)#1,2,4,8                     1
+    parser.add_argument('--relu_diff', default=2, type=int) #0,1,2,4,8                 3
     parser.add_argument('--domain', default='train_aug', type=str)#***********调#@2
     parser.add_argument('--pretrain', default=True, type=str2bool)#***********调#@4
     parser.add_argument('--pse_path', default='experiments/models/baseline_new_eval/2021-10-14 09:59:48npy', type=str)#***********调#@5
 
-    parser.add_argument('--tag', default='train_Q_withPse_SP2', type=str)
+    parser.add_argument('--tag', default='train_Q_withPse_SP', type=str)
 
     parser.add_argument('--label_name', default='AffinityNet@Rresnest269@Puzzle@train@beta=10@exp_times=8@rw@crf=0@color', type=str)
     args = parser.parse_args()
@@ -133,17 +131,16 @@ class SetLoss(_Loss):
             cams_fg=cur_masks_1hot_dw.clone()
             cams_bg[:,0]=self.args.th_bg#predictions.max()
             cams_fg[:,0]=self.args.th_bg+self.args.th_step#predictions.max()
-
             predictions1=torch.argmax(cams_bg,dim=1)
             predictions2=torch.argmax(cams_fg,dim=1)
             fgsort = torch.sort(cur_masks_1hot_dw[:,1:],1,True)[0]
             ignore_masks = predictions1 != predictions2#fgsort[0][0][:,0,0]
             ignore_masks |= (self.args.th_fg*fgsort[:,0]<fgsort[:,1])&(predictions1>0)#
             predictions=predictions1.clone()
-            predictions[ignore_masks] =21
+            predictions[ignore_masks] =21 
             cur_masks_1hot_dw=label2one_hot_torch(predictions.unsqueeze(1), C=22)#masks.max()
 
-            refine_masks_1hot,affmat=refine_with_q(cur_masks_1hot_dw,prob,3,with_aff= True)
+            refine_masks_1hot,affmat=refine_with_q(cur_masks_1hot_dw,prob,10,with_aff= True)
             # refine_masks_1hot_up=upfeat(refine_masks_1hot,prob)
             
             b, c, h, w = cur_masks_1hot_dw.shape
@@ -164,9 +161,9 @@ class SetLoss(_Loss):
                         same_mat=(abs_dist<0.01)&(~ignore_mat)
                         sam_map_list.append(same_mat)
             sam_map=torch.stack(sam_map_list,dim=1)
-            center_mask_map_55=torch.zeros((b,5,5,h,w)).bool()
-            center_mask_map_55[:,1:4,1:4,:,:]=True
-            center_mask_map=center_mask_map_55.reshape((b,25,h,w)).cuda()
+            # center_mask_map_55=torch.zeros((b,5,5,h,w)).bool()
+            # center_mask_map_55[:,1:4,1:4,:,:]=True
+            # center_mask_map=center_mask_map_55.reshape((b,25,h,w)).cuda()
 
             diff_map=torch.stack(diff_map_list,dim=1).detach()
 
@@ -183,11 +180,7 @@ class SetLoss(_Loss):
             # relu_loss_sam=torch.sum(self.relufn(((0.001-affmat)*sam_map)))#torch.sum(affmat,dim=1)affmat[:,12].max()
 
             loss3= torch.sum(self.relufn(((affmat[:,12]-self.args.relu_t)*center_relu_map)))/b
-            # if(self.args.relu_t==0.75):
-            #  pse_loss=torch.sum(self.relufn(((torch.sum(affmat*diff_map*(~center_mask_map),dim=1))*center_diff_relu_map)))/b
-            # else:
-            pse_loss=torch.sum(self.relufn(((torch.sum(affmat*diff_map,dim=1)))))/b
-
+            pse_loss=torch.sum(self.relufn(((torch.sum(affmat*diff_map,dim=1))*center_diff_relu_map)))/b
             # nofeat=~cur_masks_1hot_dw.bool()
             #  =torch.sum(nofeat*refine_masks_1hot)/b
             # nofeat[:,21]=False 
@@ -196,7 +189,7 @@ class SetLoss(_Loss):
             # pse_loss = - torch.sum(logit * cur_masks_1hot_dw[:, :21, :, :]) / b
 
 
-            return loss_guip,loss3*self.args.K_same,pse_loss*self.args.K_diff
+            return loss_guip,loss3*self.args.K_same,pse_loss*self.args.K_same
             
 def main(args):
     # evaluatorA=evaluator.evaluator(domain='train_100')
@@ -275,7 +268,7 @@ def main(args):
     log_func()
 
     nn = 4 if(args.domain=='train') else 1
-    val_iteration =nn*len(train_loader)
+    val_iteration =4*len(train_loader)
     log_iteration = int(val_iteration * args.print_ratio)
     max_iteration = args.max_epoch * val_iteration
     
@@ -286,7 +279,7 @@ def main(args):
     ###################################################################################
     # Network
     ###################################################################################
-    network_data = torch.load('/home/ders/home/ders/superpixel_fcn/pretrain_ckpt/SpixelNet_bsd_ckpt.tar')
+    network_data = torch.load('/media/ders/zhangyumin/superpixel_fcn/result/VOCAUG/SpixelNet1l_bn_adam_3000000epochs_epochSize6000_b32_lr5e-05_posW0.003_21_09_15_21_42/model_best.tar')
     model = fcnmodel.SpixelNet1l_bn(data=network_data).cuda()
     if(args.pretrain):
         model.load_state_dict(torch.load('experiments/models/modelbest18.pth'))
@@ -369,7 +362,7 @@ def main(args):
                 inuptfeats=labels.clone()
                 aff_feats=labels.clone()
                 aff_feats[aff_feats==255]=21
-                inuptfeats[inuptfeats==255]=0 
+                inuptfeats[inuptfeats==255]=0  
                 inuptfeats=label2one_hot_torch(inuptfeats.unsqueeze(1), C=21)
                 inuptfeats=F.interpolate(inuptfeats.float(), size=(12,12),mode='bilinear', align_corners=False)
                 inuptfeats=F.interpolate(inuptfeats.float(), size=(w, h),mode='bilinear', align_corners=False)
@@ -553,6 +546,10 @@ def main(args):
         # Evaluation
         #################################################################################################
         if (iteration + 1) % (val_iteration) == 0:
+        # # for test
+        # if (iteration + 1)>0:
+        #     mIoU=evaluate(valid_loader) 
+        # # end test
             mIoU, _ = evaluate(valid_loader)
             # mIoU,re_th = evaluatorA.evaluate('experiments/models/baseline_new_eval/2021-10-14 09:59:48.pth',model)
 

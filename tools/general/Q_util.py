@@ -204,7 +204,54 @@ def upfeat(input, prob, up_h=16, up_w=16):
 
     return feat_sum
 
+def getpoolfeatsum( prob, sp_h=16, sp_w=16):
 
+    prob_sum_list=[]
+    b, _, h, w = prob.shape 
+    h_shift_unit = 1
+    w_shift_unit = 1
+    p2d = (w_shift_unit, w_shift_unit, h_shift_unit, h_shift_unit)
+    feat_ =  torch.ones([b, 1, h, w]).cuda(prob.device)  # b* (n+1) *h*w
+    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 0, 1), kernel_size=(sp_h, sp_w),stride=(sp_h, sp_w)) # b * (n+1) * h* w
+    send_to_top_left =  F.pad(prob_feat, p2d, mode='constant', value=0)[:,  :, 2 * h_shift_unit:, 2 * w_shift_unit:]
+    prob_sum = send_to_top_left[:, -1:, :, :].clone()
+    prob_sum_list.append(prob_sum)
+    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 1, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
+    top = F.pad(prob_feat, p2d, mode='constant', value=0)[:,  :, 2 * h_shift_unit:, w_shift_unit:-w_shift_unit]
+    prob_sum = top[:, -1:, :, :].clone()
+    prob_sum_list.append(prob_sum)
+    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 2, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
+    top_right = F.pad(prob_feat, p2d, mode='constant', value=0)[:,  :, 2 * h_shift_unit:, :-2 * w_shift_unit]
+    prob_sum = top_right[:, -1:, :, :].clone()
+    prob_sum_list.append(prob_sum)
+    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 3, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
+    left = F.pad(prob_feat, p2d, mode='constant', value=0)[:,  :, h_shift_unit:-h_shift_unit, 2 * w_shift_unit:]
+    prob_sum = left[:, -1:, :, :].clone()
+    prob_sum_list.append(prob_sum)
+    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 4, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
+    center = F.pad(prob_feat, p2d, mode='constant', value=0)[:, :, h_shift_unit:-h_shift_unit, w_shift_unit:-w_shift_unit]
+    prob_sum = center[:, -1:, :, :].clone()
+    prob_sum_list.append(prob_sum)
+    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 5, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
+    right = F.pad(prob_feat, p2d, mode='constant', value=0)[:,  :, h_shift_unit:-h_shift_unit, :-2 * w_shift_unit]
+    prob_sum = right[:, -1:, :, :].clone()
+    prob_sum_list.append(prob_sum)
+    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 6, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
+    bottom_left = F.pad(prob_feat, p2d, mode='constant', value=0)[:,  :, :-2 * h_shift_unit, 2 * w_shift_unit:]
+    prob_sum = bottom_left[:, -1:, :, :].clone()
+    prob_sum_list.append(prob_sum)
+    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 7, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
+    bottom = F.pad(prob_feat, p2d, mode='constant', value=0)[:, :, :-2 * h_shift_unit, w_shift_unit:-w_shift_unit]
+    prob_sum = bottom[:, -1:, :, :].clone()
+    prob_sum_list.append(prob_sum)
+    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 8, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
+    bottom_right = F.pad(prob_feat, p2d, mode='constant', value=0)[:, :, :-2 * h_shift_unit, :-2 * w_shift_unit]
+    prob_sum = bottom_right[:, -1:, :, :].clone()
+    prob_sum_list.append(prob_sum)
+
+    pooled_feat=torch.cat(prob_sum_list,dim=1)
+
+    return pooled_feat
 def sp_it(input,affmat):
     b, c, h, w = input.shape
 
@@ -470,9 +517,9 @@ def get_turn(area=5):
 
 def refine_with_q(input,prob,iter=20,down_size=16,with_aff=False):
     if(iter>0 or with_aff):
-        init_turn_grid=get_turn().reshape(1,25,5,5).cuda(input.device)
+        init_turn_grid=get_turn().reshape(1,25,5,5).cuda(prob.device)
         b,c,h,w=prob.shape
-        ini_grid=torch.arange(0,25,1).reshape(1,1,5,5).cuda(input.device)
+        ini_grid=torch.arange(0,25,1).reshape(1,1,5,5).cuda(prob.device)
         ini_grid=label2one_hot_torch(ini_grid,25)
         ini_grid=ini_grid.repeat(b,1,int(h/(down_size*5))+1,int(w/(down_size*5))+1)[:,:,:int(h/down_size),:int(w/down_size)].detach()
 
@@ -481,6 +528,8 @@ def refine_with_q(input,prob,iter=20,down_size=16,with_aff=False):
         up_ini_grid= upfeat(ini_grid,prob)
         aff_grid = poolfeat(up_ini_grid,prob)  
         aff_mat = torch.gather(aff_grid,1,turn_grid)
+        if(input==None): 
+            return None,aff_mat
         if(iter>0):
             if(prob.shape[2]==input.shape[2]):
                 input= poolfeat(input,prob,down_size,down_size)
@@ -488,7 +537,7 @@ def refine_with_q(input,prob,iter=20,down_size=16,with_aff=False):
                     input= rewith_affmat(input,aff_mat)
                 input = upfeat(input,prob)
             else:
-                for i in range(iter-1):
+                for i in range(iter):
                     input= rewith_affmat(input,aff_mat)
         if(with_aff):
             return input,aff_mat

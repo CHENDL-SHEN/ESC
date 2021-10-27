@@ -1,0 +1,7 @@
+{
+    "topkt":{"_type": "choice", "_value": [0.05,0.1,0.2,0.4,0.8]},
+    "Qloss_rtime":{"_type": "choice", "_value": [1,2,5]},
+    "ksalq":{"_type": "choice", "_value": [1,2,5,10,50]}
+
+
+}

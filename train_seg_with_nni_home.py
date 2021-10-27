@@ -8,7 +8,7 @@ import copy
 import shutil
 import random
 import argparse
-from cv2 import LMEDS, Tonemap, log, polarToCart
+from cv2 import LMEDS, log
 import numpy as np
 import datetime
 
@@ -54,9 +54,10 @@ import  core.models as fcnmodel
 import nni
 
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,4"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3,6,7"
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def get_params():
+
     parser = argparse.ArgumentParser()
     ###############################################################################
     # Dataset
@@ -79,9 +80,9 @@ def get_params():
     ###############################################################################
     parser.add_argument('--batch_size', default=32, type=int)
     #parser.add_argument('--batch_size', default=8, type=int)
-    parser.add_argument('--max_epoch', default=15, type=int)#***********调
+    parser.add_argument('--max_epoch', default=20, type=int)
 
-    parser.add_argument('--lr', default=0.01, type=float)#***********调
+    parser.add_argument('--lr', default=0.01, type=float)
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
 
@@ -89,111 +90,26 @@ def get_params():
     parser.add_argument('--min_image_size', default=320, type=int)
     parser.add_argument('--max_image_size', default=640, type=int)
 
-    parser.add_argument('--alpha', default=0.5, type=float)
-    parser.add_argument('--ksalq', default=1, type=float)
-
+    parser.add_argument('--alpha_sal', default=0.5, type=float)
     # parser.add_argument('--alpha_q', default=0.5, type=float)
-    parser.add_argument('--sal_th', default=0.001, type=float)
+    parser.add_argument('--alpha_final', default=0.5, type=float)
     # parser.add_argument('--sal_or_q', default=False, type=str2bool)
     parser.add_argument('--loss_mask', default=1.0, type=float)
-    parser.add_argument('--tao', default=0.4, type=float)
+    parser.add_argument('--tao', default=0.5, type=float)
 
     ###############################################################################
     # others
     ###############################################################################
-    parser.add_argument('--withQ', default=True, type=str2bool)#***********改
-    parser.add_argument('--Qmodelpath', default='experiments/models/modelbest18.pth', type=str)#***********改
+    parser.add_argument('--withQ', default=True, type=str2bool)
     parser.add_argument('--Qloss_rtime', default=0, type=int)
 
     parser.add_argument('--print_ratio', default=0.1, type=float)
 
-    parser.add_argument('--tag', default='Qcam_batch8', type=str)
+    parser.add_argument('--tag', default='Q_cams_nni2_home', type=str)
 
     args, _ = parser.parse_known_args()
     return args
-from torch.nn.modules.loss import _Loss
 
-class SetLoss(_Loss):
-
-  def __init__(self,
-               args,
-               size_average=None,
-               reduce=None,
-               reduction='mean'):
-    super(SetLoss, self).__init__(size_average, reduce, reduction)
-    self.args=args
-    self.class_loss_fn = nn.CrossEntropyLoss().cuda()
-  def forward(self,logits,prob,sailencys,labels):
-        if(self.args['withQ']):
-     
-            sailencys = poolfeat(sailencys, prob, 16, 16).cuda()
-            
-        b, c, h, w = logits.size()
-        sailencys = F.interpolate(sailencys, size=(h, w))
-        if( self.args['sal_th']>0.01):
-            sailencys = (sailencys > self.args['sal_th']).float()
-
-        tagpred = F.avg_pool2d(logits, kernel_size=(h, w), padding=0)#
-        loss_cls = F.multilabel_soft_margin_loss(tagpred[:, 1:].view(tagpred.size(0), -1), labels[:,1:])
-        if(True):
-            cam=logits
-            sailencys = F.interpolate(sailencys.float(), size=(h, w))
-
-            label_map = labels[:,1:].view(b, 20, 1, 1).expand(size=(b, 20, h, w)).bool()#label_map_bg[0,:,0,0]
-            # Map selection
-            label_map_fg = torch.zeros(size=(b, 21, h, w)).bool().cuda()
-            label_map_bg = torch.zeros(size=(b, 21, h, w)).bool().cuda()
-
-            label_map_bg[:, 0] = True
-            label_map_fg[:,1:] = label_map.clone()
-
-            sal_pred = F.softmax(cam, dim=1) 
-
-            iou_saliency = (torch.round(sal_pred[:, 1:].detach()) * torch.round(sailencys)).view(b, 20, -1).sum(-1) / \
-                        (torch.round(sal_pred[:, 1:].detach()) + 1e-04).view(b, 20, -1).sum(-1)
-
-            valid_channel = (iou_saliency > self.args["tao"]).view(b, 20, 1, 1).expand(size=(b, 20, h, w))
-            
-            label_fg_valid = label_map & valid_channel
-
-            label_map_fg[:, 1:] = label_fg_valid
-            label_map_bg[:, 1:] = label_map & (~valid_channel)
-
-            # Saliency loss
-            fg_map = torch.zeros_like(sal_pred).cuda()
-            bg_map = torch.zeros_like(sal_pred).cuda()
-
-            fg_map[label_map_fg] = sal_pred[label_map_fg]
-            bg_map[label_map_bg] = sal_pred[label_map_bg]
-
-            fg_map = torch.sum(fg_map, dim=1, keepdim=True)
-            bg_map = torch.sum(bg_map, dim=1, keepdim=True)
-    
-            bg_map = torch.sub(1, bg_map) #label_map_fg[1,:,0,0] torch.sum(fg_map[7][0]>0.5) F.mse_loss(2*fg_map,sailencys) 
-            sal_pred = fg_map * 0.5 + bg_map * (1 - 0.5) 
-
-            sal_loss =F.mse_loss(sal_pred,sailencys)
-       
-        q_loss =torch.tensor(0.0).cuda()
-    
-        if(self.args['withQ'] and False ):
-            # label_map = labels[:,1:].view(16, 20, 1, 1).expand(size=(16, 20, h, w)).bool()#label_map_bg[0,:,0,0]
-                reconstr_feat5= torch.zeros(b,5,h,w).float() #reconstr_feat5.reshape(b,5,-1).max(dim=2)
-                for ii in range(b):
-                    cur=0
-                    for jj in range(21):
-                        if(labels[ii,jj]==1):
-                            reconstr_feat5[ii,cur]=logits[ii,jj]
-                            cur+=1
-                            if(cur>=5):break
-                    pass
-                reconstr_feat=F.softmax(reconstr_feat5, dim=1).cuda()
-                refinecam=reconstr_feat
-                for i in range(self.args['Qloss_rtime']):
-                        refinecam= upfeat(refinecam,prob)
-                        refinecam= poolfeat(refinecam,prob)
-                q_loss =F.mse_loss(reconstr_feat,refinecam)
-        return loss_cls,sal_loss,q_loss
 
 def main(args):
 
@@ -201,9 +117,9 @@ def main(args):
     # Arguments
     ###################################################################################
     if(args['withQ']):
-        evaluatorA=evaluator.evaluator(domain='train_600',fast_eval=True)
+        evaluatorA=evaluator.evaluator(domain='train_600',first_check=(320,65),fast_eval=True)
     else:
-        evaluatorA=evaluator.evaluator(domain='train',withQ=False)
+        evaluatorA=evaluator.evaluator(domain='train_600',withQ=True,first_check=(320,65))
     
     tensorboard_dir = create_directory(f'./experiments/tensorboards/{args["tag"]}/{TIMESTAMP}/')   
 
@@ -281,12 +197,11 @@ def main(args):
     log_func('[i] log_iteration : {:,}'.format(log_iteration))
     log_func('[i] val_iteration : {:,}'.format(val_iteration))
     log_func('[i] max_iteration : {:,}'.format(max_iteration))
-    setloss=SetLoss(args=args)
     
-    setloss = torch.nn.DataParallel(setloss).cuda()
+
     if(args['withQ']):
         Q_model = fcnmodel.SpixelNet1l_bn().cuda()
-        Q_model.load_state_dict(torch.load(args['Qmodelpath']))
+        Q_model.load_state_dict(torch.load('experiments/models/modelbest18.pth'))
         Q_model = nn.DataParallel(Q_model)
         Q_model.eval()
 
@@ -357,7 +272,7 @@ def main(args):
     train_timer = Timer()
     eval_timer = Timer()
 
-    train_meter = Average_Meter(['loss','sal_loss','q_loss'])
+    train_meter = Average_Meter(['loss','sal_loss'])
 
     writer = SummaryWriter(tensorboard_dir)
     train_iterator = Iterator(train_loader)
@@ -369,43 +284,99 @@ def main(args):
         images = images.cuda()
         labels = labels.cuda()
         sailencys = sailencys.cuda().view(sailencys.shape[0],1,sailencys.shape[1],sailencys.shape[2])/255.0
-        prob=None
-        if(args['withQ']):
-            prob = Q_model(images)
-
-        b,c,h,w= images.shape
-
-
-        logits = model(images)
-        # logits=F.interpolate(logits,(sailencys.shape[-2],sailencys.shape[-1]))
-        # logits=poolfeat(logits,prob)
-
-        lossret=setloss(logits,prob,sailencys,labels)
-        loss_cls=torch.mean(lossret[0])
-        sal_loss=torch.mean(lossret[1])
-        q_loss=torch.mean(lossret[2])
-
-        # sailencys=sailencys/sailencys.reshape(32,-1).max(dim=1)[0]
         #################################################################################################
         # Inference
         #################################################################################################
-      
+        if(args['withQ']):
+            output = Q_model(images)
+            prob = output.clone().cuda(1)
+            sailencys = poolfeat(sailencys.cuda(1), prob, 16, 16).cuda(0)
+
+
+        logits = model(images)
+        b, c, h, w = logits.size()
+
+        sailencys = F.interpolate(sailencys, size=(h, w))
+
+
+        tagpred = F.avg_pool2d(logits, kernel_size=(h, w), padding=0)#
+        loss_cls = F.multilabel_soft_margin_loss(tagpred[:, 1:].view(tagpred.size(0), -1), labels[:,1:])
+        N, C ,H,W= images.shape
+        if(True):
+            cam=logits
+            sailencys = F.interpolate(sailencys.float(), size=(h, w))
+
+            label_map = labels[:,1:].view(b, 20, 1, 1).expand(size=(b, 20, h, w)).bool()#label_map_bg[0,:,0,0]
+            # Map selection
+            label_map_fg = torch.zeros(size=(b, 21, h, w)).bool().cuda()
+            label_map_bg = torch.zeros(size=(b, 21, h, w)).bool().cuda()
+
+            label_map_bg[:, 0] = True
+            label_map_fg[:,1:] = label_map.clone()
+
+            sal_pred = F.softmax(cam, dim=1) 
+
+            iou_saliency = (torch.round(sal_pred[:, 1:].detach()) * torch.round(sailencys)).view(b, 20, -1).sum(-1) / \
+                        (torch.round(sal_pred[:, 1:].detach()) + 1e-04).view(b, 20, -1).sum(-1)
+
+            valid_channel = (iou_saliency > args["tao"]).view(b, 20, 1, 1).expand(size=(b, 20, h, w))
+            
+            label_fg_valid = label_map & valid_channel
+
+            label_map_fg[:, 1:] = label_fg_valid
+            label_map_bg[:, 1:] = label_map & (~valid_channel)
+
+            # Saliency loss
+            fg_map = torch.zeros_like(sal_pred).cuda()
+            bg_map = torch.zeros_like(sal_pred).cuda()
+
+            fg_map[label_map_fg] = sal_pred[label_map_fg]
+            bg_map[label_map_bg] = sal_pred[label_map_bg]
+
+            fg_map = torch.sum(fg_map, dim=1, keepdim=True)
+            bg_map = torch.sum(bg_map, dim=1, keepdim=True)
+    
+            bg_map = torch.sub(1, bg_map) #label_map_fg[1,:,0,0] torch.sum(fg_map[7][0]>0.5) F.mse_loss(2*fg_map,sailencys) 
+            sal_pred = fg_map * 0.5 + bg_map * (1 - 0.5) 
+
+            sal_loss =F.mse_loss(sal_pred,sailencys)
+       
+    
+        if(args['withQ'] ):
+            # label_map = labels[:,1:].view(16, 20, 1, 1).expand(size=(16, 20, h, w)).bool()#label_map_bg[0,:,0,0]
+            q_loss =torch.tensor(0.0).cuda()
+            while(True):
+                if(b%the_number_of_gpu==0):
+                    break
+                the_number_of_gpu-=1
+
+            for gpui in range(the_number_of_gpu):
+                curb = b/the_number_of_gpu
+                reconstr_feat=F.softmax(logits[int(curb*gpui):int(curb*(gpui+1))], dim=1).cuda(gpui)
+                cams=reconstr_feat
+                refinecam= refine_with_q(cams,prob[int(curb*gpui):int(curb*(gpui+1))].cuda(gpui),args['Qloss_rtime'])
+                loss_mask = args["loss_mask"] +(1-args["loss_mask"])*sailencys
+                loss_mask= loss_mask.cuda()
+                q_loss +=F.mse_loss(cams.cuda(0)*loss_mask[int(curb*gpui):int(curb*(gpui+1))],refinecam.cuda(0)*loss_mask[int(curb*gpui):int(curb*(gpui+1))])/the_number_of_gpu
+
+        else:
+            q_loss=torch.tensor(0)
         ###############################################################################
         # The part is to calculate losses.
         # ###############################################################################
 
         #alpha=1
-        # sal_start = args["alpha_sal"]
-        # sal_final = args["alpha_final"]
-        # q_start = 1-sal_start
-        # q_final = 1-sal_final
+        sal_start = args["alpha_sal"]
+        sal_final = args["alpha_final"]
+        q_start = 1-sal_start
+        q_final = 1-sal_final
 
 
 
-        # alpha_sal=sal_start*(1-iteration / max_iteration ) + sal_final*iteration/max_iteration 
-        # alpha_q= q_start*(1-iteration / max_iteration ) + q_final*iteration/max_iteration 
+        alpha_sal=sal_start*(1-iteration / max_iteration ) + sal_final*iteration/max_iteration 
+        alpha_q= q_start*(1-iteration / max_iteration ) + q_final*iteration/max_iteration 
 
-        loss= loss_cls+args["alpha"]*(sal_loss+args["ksalq"]*q_loss) 
+        loss= loss_cls+alpha_sal*sal_loss+alpha_q*q_loss 
 
         #################################################################################################
         
@@ -416,14 +387,13 @@ def main(args):
         train_meter.add({
             'loss' : loss_cls.item(), 
             'sal_loss' : sal_loss.item(), 
-            'q_loss' : q_loss.item()
         })
         
         #################################################################################################
         # For Log
         #################################################################################################
         if (iteration + 1) % log_iteration == 0:
-            loss,sal_loss,q_loss = train_meter.get(clear=True)
+            loss,sal_loss = train_meter.get(clear=True)
             learning_rate = float(get_learning_rate_from_optimizer(optimizer))
             
             data = {
@@ -431,7 +401,6 @@ def main(args):
                 'learning_rate' : learning_rate,
                 'loss' : loss,
                 'sal_loss' : sal_loss, 
-                'q_loss' : q_loss, 
                 'time' : train_timer.tok(clear=True),
             }
             data_dic['train'].append(data)
@@ -442,7 +411,6 @@ def main(args):
                 learning_rate={learning_rate:.4f}, \
                 loss={loss:.4f}, \
                 sal_loss={sal_loss:.4f}, \
-                q_loss={q_loss:.4f}, \
                 time={time:.0f}sec'.format(**data)
             )
 
@@ -452,11 +420,10 @@ def main(args):
         # Evaluation
         #################################################################################################
         #val_iteration=1
-        # mIoU,re_th = evaluatorA.evaluate(model,args['Qmodelpath'])
         if (iteration + 1) % val_iteration == 0:
             #mIoU, threshold = evaluate(valid_loader)
             #best_mIoU,best_th = evaluate(valid_loader)
-            mIoU,re_th = evaluatorA.evaluate(model,args['Qmodelpath'])
+            mIoU,re_th = evaluatorA.evaluate(model,'experiments/models/modelbest18.pth')
             refine,threshold=re_th
             if best_valid_mIoU == -1 or best_valid_mIoU < mIoU:
                 best_valid_mIoU = mIoU

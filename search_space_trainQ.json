@@ -1,5 +1,9 @@
 {
-    "relu_diff":{"_type":"choice","_value":[0]},
-    "K_same":{"_type":"choice","_value":[1]},
-    "relu_t":{"_type": "choice", "_value": [ 0.75]}
+    "th_bg":{"_type":"choice","_value":[0.05]},
+    "th_step":{"_type":"choice","_value":[0.5]},
+    "th_fg":{"_type": "choice", "_value": [ 0.05]},
+    "relu_diff":{"_type": "choice", "_value": [0]},
+    "K_same":{"_type":"choice","_value":[1.01,2.01,4.01,8.01,16.01]},
+    "K_diff":{"_type":"choice","_value":[1.01,2.01,4.01,8.01]}
+
 }

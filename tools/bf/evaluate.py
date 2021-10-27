@@ -6,7 +6,28 @@ import numpy as np
 from PIL import Image
 import multiprocessing
 import argparse
+            def get_2loos(a,kk1):
+                aff_matavg = torch.zeros(affmat.shape).cuda()
+                aff_matavg[center_mask_map]=(1-a)/8
+                aff_matavg[:,12]=a
 
+                # re_sailencys_avg=rewith_affmat(sailencys,aff_matavg)
+                # re_sailencys=rewith_affmat(sailencys,affmat)
+
+                # refinecam_avg=rewith_affmat(reconstr_feat,aff_matavg)
+
+   
+                # kk1=1e-6
+                #norm_camr=torch.pow(reconstr_feat-refinecam,2) #norm_camr[label_map_all].mean()
+                #norm_camravg=torch.pow(reconstr_feat-refinecam_avg,2)#norm_camravg[label_map_all].mean()
+                # norm_pser=(torch.pow(sailencys-re_sailencys,2))#norm_pser[label_map_all].mean()
+                # norm_pseravg=torch.pow(sailencys-re_sailencys_avg,2)##norm_pseravg[label_map_all].mean()
+                # suml_fn=lambda x:torch.sum(x,dim=1)
+                #q_loss = (norm_camr[label_map_all]+kk1)/(norm_camravg[label_map_all]+kk1)
+                # q_loss2=(suml_fn(norm_pser)+kk1)/(suml_fn(norm_pseravg)+kk1)
+                q_loss=(q_loss).mean()
+                # q_loss2=(q_loss2).mean()
+                return q_loss
 parser = argparse.ArgumentParser()
 parser.add_argument('--experiment_name', default='train_kmeans66@train@scale=0.5,1.0,1.5,2.0@iteration=0@thr=0.300000', type=str)
 parser.add_argument("--domain", default='train', type=str)

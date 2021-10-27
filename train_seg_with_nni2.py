@@ -32,7 +32,7 @@ from tools.general.time_utils import *
 from tools.general.json_utils import *
 
 #import evaluate
-import evaluator
+import evaluatorqcam
 
 from tools.ai.log_utils import *
 from tools.ai.demo_utils import *
@@ -54,7 +54,7 @@ import  core.models as fcnmodel
 import nni
 
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,4"
+os.environ["CUDA_VISIBLE_DEVICES"] = "5,6,7"
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def get_params():
     parser = argparse.ArgumentParser()
@@ -201,7 +201,7 @@ def main(args):
     # Arguments
     ###################################################################################
     if(args['withQ']):
-        evaluatorA=evaluator.evaluator(domain='train_600',fast_eval=True)
+        evaluatorA=evaluatorqcam.evaluator(domain='train_600',fast_eval=True)
     else:
         evaluatorA=evaluator.evaluator(domain='train',withQ=False)
     
@@ -296,7 +296,7 @@ def main(args):
     if args["architecture"] == 'DeepLabv3+':
         model = DeepLabv3_Plus(args["backbone"], num_classes=meta_dic['classes'] + 1, mode=args["mode"], use_group_norm=args["use_gn"])
     elif args["architecture"] == 'Seg_Model':
-        model = Seg_Model(args["backbone"], num_classes=meta_dic['classes'] + 1)
+        model = SANET_Model(args["backbone"], num_classes=meta_dic['classes'] + 1)
     elif args["architecture"] == 'CSeg_Model':
         model = CSeg_Model(args["backbone"], num_classes=meta_dic['classes'] + 1)
 
@@ -376,7 +376,7 @@ def main(args):
         b,c,h,w= images.shape
 
 
-        logits = model(images)
+        logits = model(images,prob)
         # logits=F.interpolate(logits,(sailencys.shape[-2],sailencys.shape[-1]))
         # logits=poolfeat(logits,prob)
 

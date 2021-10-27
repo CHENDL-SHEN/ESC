@@ -1,0 +1,9 @@
+{
+
+    "th_bg":{"_type":"choice","_value":[0.05,0.04]},
+    "th_step":{"_type":"choice","_value":[0.5,0.55]},
+    "th_fg":{"_type": "choice", "_value": [ 0.05]},
+    "relu_diff":{"_type": "choice", "_value": [0]},
+    "lr":{ "_type": "choice", "_value": [ 0.0005,0.001,0.005]},
+    "batch_size":{ "_type": "choice", "_value": [16]}
+}

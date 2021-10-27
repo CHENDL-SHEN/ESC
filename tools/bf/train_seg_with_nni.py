@@ -54,7 +54,7 @@ import  core.models as fcnmodel
 import nni
 
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,4"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,3"
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def get_params():
     parser = argparse.ArgumentParser()
@@ -79,7 +79,7 @@ def get_params():
     ###############################################################################
     parser.add_argument('--batch_size', default=32, type=int)
     #parser.add_argument('--batch_size', default=8, type=int)
-    parser.add_argument('--max_epoch', default=15, type=int)#***********调
+    parser.add_argument('--max_epoch', default=20, type=int)#***********调
 
     parser.add_argument('--lr', default=0.01, type=float)#***********调
     parser.add_argument('--wd', default=4e-5, type=float)
@@ -93,7 +93,7 @@ def get_params():
     parser.add_argument('--ksalq', default=1, type=float)
 
     # parser.add_argument('--alpha_q', default=0.5, type=float)
-    parser.add_argument('--sal_th', default=0.001, type=float)
+    parser.add_argument('--sal_th', default=0.2, type=float)
     # parser.add_argument('--sal_or_q', default=False, type=str2bool)
     parser.add_argument('--loss_mask', default=1.0, type=float)
     parser.add_argument('--tao', default=0.4, type=float)
@@ -103,11 +103,11 @@ def get_params():
     ###############################################################################
     parser.add_argument('--withQ', default=True, type=str2bool)#***********改
     parser.add_argument('--Qmodelpath', default='experiments/models/modelbest18.pth', type=str)#***********改
-    parser.add_argument('--Qloss_rtime', default=0, type=int)
+    parser.add_argument('--Qloss_rtime', default=1, type=int)
 
     parser.add_argument('--print_ratio', default=0.1, type=float)
 
-    parser.add_argument('--tag', default='Qcam_batch8', type=str)
+    parser.add_argument('--tag', default='sanetQ_nest50', type=str)
 
     args, _ = parser.parse_known_args()
     return args
@@ -125,9 +125,7 @@ class SetLoss(_Loss):
     self.class_loss_fn = nn.CrossEntropyLoss().cuda()
   def forward(self,logits,prob,sailencys,labels):
         if(self.args['withQ']):
-     
             sailencys = poolfeat(sailencys, prob, 16, 16).cuda()
-            
         b, c, h, w = logits.size()
         sailencys = F.interpolate(sailencys, size=(h, w))
         if( self.args['sal_th']>0.01):
@@ -176,7 +174,7 @@ class SetLoss(_Loss):
        
         q_loss =torch.tensor(0.0).cuda()
     
-        if(self.args['withQ'] and False ):
+        if(self.args['withQ'] ):
             # label_map = labels[:,1:].view(16, 20, 1, 1).expand(size=(16, 20, h, w)).bool()#label_map_bg[0,:,0,0]
                 reconstr_feat5= torch.zeros(b,5,h,w).float() #reconstr_feat5.reshape(b,5,-1).max(dim=2)
                 for ii in range(b):
@@ -201,7 +199,7 @@ def main(args):
     # Arguments
     ###################################################################################
     if(args['withQ']):
-        evaluatorA=evaluator.evaluator(domain='train_600',fast_eval=True)
+        evaluatorA=evaluator.evaluator(domain='train_300',fast_eval=True)
     else:
         evaluatorA=evaluator.evaluator(domain='train',withQ=False)
     
@@ -373,13 +371,8 @@ def main(args):
         if(args['withQ']):
             prob = Q_model(images)
 
-        b,c,h,w= images.shape
-
 
         logits = model(images)
-        # logits=F.interpolate(logits,(sailencys.shape[-2],sailencys.shape[-1]))
-        # logits=poolfeat(logits,prob)
-
         lossret=setloss(logits,prob,sailencys,labels)
         loss_cls=torch.mean(lossret[0])
         sal_loss=torch.mean(lossret[1])
@@ -416,7 +409,7 @@ def main(args):
         train_meter.add({
             'loss' : loss_cls.item(), 
             'sal_loss' : sal_loss.item(), 
-            'q_loss' : q_loss.item()
+            'q_loss' : args["ksalq"]*q_loss.item()
         })
         
         #################################################################################################
@@ -452,7 +445,6 @@ def main(args):
         # Evaluation
         #################################################################################################
         #val_iteration=1
-        # mIoU,re_th = evaluatorA.evaluate(model,args['Qmodelpath'])
         if (iteration + 1) % val_iteration == 0:
             #mIoU, threshold = evaluate(valid_loader)
             #best_mIoU,best_th = evaluate(valid_loader)
