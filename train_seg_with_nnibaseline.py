@@ -24,7 +24,7 @@ from nni.utils import merge_parameter
 from torch.utils.data import DataLoader
 from imageio import imsave
 from core.networks import *
-import core.spnetworks
+import core.spnetwork_zym
 
 from core.datasets import *
 from tools.general.Q_util import *
@@ -56,7 +56,7 @@ import  core.models as fcnmodel
 import nni
 
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4,5"
 
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def get_params():
@@ -71,7 +71,7 @@ def get_params():
     ###############################################################################
     # Network
     ###############################################################################
-    parser.add_argument('--architecture', default='Seg_Model', type=str)
+    # parser.add_argument('--architecture', default='SANET_Model_new7', type=str)
     parser.add_argument('--backbone', default='resnest50', type=str)
     parser.add_argument('--mode', default='fix', type=str)
     parser.add_argument('--use_gn', default=True, type=str2bool)
@@ -80,9 +80,9 @@ def get_params():
     ###############################################################################
     # Hyperparameter
     ###############################################################################
-    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--batch_size', default=16, type=int)
     #parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--max_epoch', default=8, type=int)#***********调
+    parser.add_argument('--max_epoch', default=12, type=int)#***********调
 
     parser.add_argument('--lr', default=0.01, type=float)#***********调
     parser.add_argument('--wd', default=4e-5, type=float)
@@ -104,13 +104,28 @@ def get_params():
     ###############################################################################
     # others
     ###############################################################################
-    parser.add_argument('--withQ', default=False, type=str2bool)#***********改
+    parser.add_argument('--withQ', default=True, type=str2bool)#***********改
     parser.add_argument('--Qmodelpath', default='experiments/models/bestQ.pth', type=str)#***********改
     parser.add_argument('--Qloss_rtime', default=0, type=int)
 
     parser.add_argument('--print_ratio', default=0.1, type=float)
 
-    parser.add_argument('--tag', default='cam_batch32', type=str)
+    parser.add_argument('--tag', default='Scam_batch16_baseline', type=str)
+
+    ###############################################################################
+    ## parse for model fusion
+    ###############################################################################
+    parser.add_argument('--ch_mid', default=512, type=int)  #1024
+    parser.add_argument('--ch_q', default=64, type=int)
+    parser.add_argument('--No', default=0, type=int)
+    parser.add_argument('--process2', default=4, type=int)
+    parser.add_argument('--with_se', default=0, type=int)
+    parser.add_argument('--ratio', default=1, type=int)
+    parser.add_argument('--conv_mode', default=0, type=int)
+    parser.add_argument('--se_ratio', default=16, type=int)
+    # parser.add_argument('--process', default=4, type=int)
+    # parser.add_argument('--with_nni', default=False, type=bool)
+
     
     # parser.add_argument('--covn', default=1, type=int)
 
@@ -206,7 +221,7 @@ def main(args):
     # Arguments
     ###################################################################################
     if(args['withQ']):
-        evaluatorA=evaluatorqcam.evaluator(domain='train_600',fast_eval=True)
+        evaluatorA=evaluatorqcam.evaluator(domain='train',fast_eval=True)
     else:
         import evaluator
         evaluatorA=evaluator.evaluator(domain='train',withQ=False)
@@ -281,6 +296,7 @@ def main(args):
     log_func()
 
     val_iteration = len(train_loader)
+    cut_iteration =7*val_iteration
     log_iteration = int(val_iteration * args["print_ratio"])
     max_iteration = args["max_epoch"] * val_iteration
     
@@ -299,17 +315,14 @@ def main(args):
     ###################################################################################
     # Network
     ###################################################################################
-    # model = core.spnetworks.__dict__[args["architecture"]](args["backbone"], num_classes=meta_dic['classes'] + 1)
+    args["architecture"]='SANET_Model_new'+str(int(args['No']))
 
-    model = core.networks.__dict__[args["architecture"]](args["backbone"], num_classes=meta_dic['classes'] + 1)
-            # process1=args["process1"],process2=args["process2"],with_se=args["with_se"],conv_mode=args["conv_mode"],ratio=args["ratio"],se_ratio=args["se_ratio"])
-    # if args["architecture"] == 'DeepLabv3+':
-    #     model = DeepLabv3_Plus(args["backbone"], num_classes=meta_dic['classes'] + 1, mode=args["mode"], use_group_norm=args["use_gn"])
-    # elif args["architecture"] == 'Seg_Model':
-    #     model = SANET_Model(args["backbone"], num_classes=meta_dic['classes'] + 1)
-    # elif args["architecture"] == 'CSeg_Model':
-    #     model = CSeg_Model(args["backbone"], num_classes=meta_dic['classes'] + 1)
-
+    
+    if(args['withQ']):
+        model = core.spnetwork_zym.__dict__[args["architecture"]](args["backbone"], num_classes=meta_dic['classes'] + 1)
+    else:
+         model = core.networks.__dict__[args["architecture"]](args["backbone"], num_classes=meta_dic['classes'] + 1)
+   
 
     param_groups = model.get_parameter_groups()
     params = [
@@ -322,8 +335,11 @@ def main(args):
     model = model.cuda()
     model.train()
     # model.load_state_dict(torch.load('experiments/models/Q_cams_nni2/2021-10-17 17:44:07.pth'))
-    #model.load_state_dict(torch.load('/media/ders/mazhiming/PCAM/experiments/models/train_10.1.pth'))
-    log_func('[i] Architecture is {}'.format(args["architecture"]+str(args["No"])))
+    # model.load_state_dict(torch.load('/media/ders/mazhiming/PCAM/experiments/models/train_10.1.pth'))
+    #  model.load_state_dict(torch.load('experiments/models/Qcam_batch16_upfeat/2021-11-07 11:36:36.pth')) strick
+    param_groups = model.get_parameter_groups()
+    
+    log_func('[i] Architecture is {}'.format(args["architecture"]))
     log_func('[i] Total Params: %.2fM'%(calculate_parameters(model)))
     log_func()
 
@@ -375,6 +391,8 @@ def main(args):
     torch.autograd.set_detect_anomaly(True)
     best_valid_mIoU =-1
     for iteration in range(max_iteration):
+        if (iteration>cut_iteration):
+            break
         images, imgids,labels,masks,sailencys= train_iterator.get()
         images = images.cuda()
         labels = labels.cuda()

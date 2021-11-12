@@ -283,7 +283,7 @@ class VOC_Dataset_For_trainQ_withcam(VOC_Dataset):
         size = image.size
         sal_mask = Image.open(self.sal_dir + image_id + '.png').convert('L')
         cam = np.load(os.path.join(self.pse_dir, image_id+'.npy'))[0].transpose(1,2,0)
-
+    
         if self.transform is not None:
             input_dic = {'image': image, 'mask': sal_mask, 'cam': cam}
             output_dic = self.transform(input_dic)

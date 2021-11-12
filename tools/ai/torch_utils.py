@@ -134,7 +134,7 @@ def one_hot_embedding(label, classes):
     vector = np.zeros((classes), dtype = np.float32)
     if len(label) > 0:
         vector[label] = 1.
-    return vector
+    return vector 
 
 def calculate_parameters(model):
     return sum(param.numel() for param in model.parameters())/1000000.0

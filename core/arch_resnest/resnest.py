@@ -36,6 +36,8 @@ def resnest50(pretrained=False, root='~/.encoding/models', **kwargs):
                    deep_stem=True, stem_width=32, avg_down=True,
                    avd=True, avd_first=False, **kwargs)
     if pretrained:
+        # model.load_state_dict(torch.load("/home/ders/.cache/torch/hub/checkpoints/experiments/models/cam_batch8/2021-11-05 01:42:11_eps.pth"))
+       
         model.load_state_dict(torch.hub.load_state_dict_from_url(
             "https://github-releases.githubusercontent.com/168799526/c5627180-ba4e-11ea-95f5-31e2a98de152?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20210628%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20210628T030939Z&X-Amz-Expires=300&X-Amz-Signature=d9f3082152727f717bb46a32e9663759ee3f6efbd52347f3b94c4d7f33bc9216&X-Amz-SignedHeaders=host&actor_id=42644052&key_id=0&repo_id=168799526&response-content-disposition=attachment%3B%20filename%3Dresnest50-528c19ca.pth&response-content-type=application%2Foctet-stream", progress=True, check_hash=True))
 

@@ -56,7 +56,7 @@ import  core.models as fcnmodel
 import nni
 
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def get_params():
@@ -71,7 +71,7 @@ def get_params():
     ###############################################################################
     # Network
     ###############################################################################
-    parser.add_argument('--architecture', default='Seg_Model', type=str)
+    parser.add_argument('--architecture', default='SANET_Q_Attention', type=str)
     parser.add_argument('--backbone', default='resnest50', type=str)
     parser.add_argument('--mode', default='fix', type=str)
     parser.add_argument('--use_gn', default=True, type=str2bool)
@@ -80,7 +80,7 @@ def get_params():
     ###############################################################################
     # Hyperparameter
     ###############################################################################
-    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--batch_size', default=16, type=int)
     #parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--max_epoch', default=8, type=int)#***********调
 
@@ -104,14 +104,28 @@ def get_params():
     ###############################################################################
     # others
     ###############################################################################
-    parser.add_argument('--withQ', default=False, type=str2bool)#***********改
+    parser.add_argument('--withQ', default=True, type=str2bool)#***********改
     parser.add_argument('--Qmodelpath', default='experiments/models/bestQ.pth', type=str)#***********改
     parser.add_argument('--Qloss_rtime', default=0, type=int)
 
     parser.add_argument('--print_ratio', default=0.1, type=float)
 
-    parser.add_argument('--tag', default='cam_batch32', type=str)
-    
+    parser.add_argument('--tag', default='Qcam_batch16_upfeat', type=str)
+
+    ###############################################################################
+    ## parse for model fusion
+    ###############################################################################
+    parser.add_argument('--ch_mid', default=512, type=int)  #1024
+    parser.add_argument('--ch_q', default=64, type=int)
+    parser.add_argument('--process1', default=0,type=int) 
+    parser.add_argument('--process2', default=4, type=int)
+    parser.add_argument('--with_se', default=0, type=int)
+    parser.add_argument('--ratio', default=1, type=int)
+    parser.add_argument('--conv_mode', default=0, type=int)
+    parser.add_argument('--se_ratio', default=16, type=int)
+    parser.add_argument('--process', default=0, type=int)
+    parser.add_argument('--kernel_size1', default=3, type=int)
+    parser.add_argument('--kernel_size2', default=1, type=int)
     # parser.add_argument('--covn', default=1, type=int)
 
     args, _ = parser.parse_known_args()
@@ -299,9 +313,11 @@ def main(args):
     ###################################################################################
     # Network
     ###################################################################################
-    # model = core.spnetworks.__dict__[args["architecture"]](args["backbone"], num_classes=meta_dic['classes'] + 1)
-
-    model = core.networks.__dict__[args["architecture"]](args["backbone"], num_classes=meta_dic['classes'] + 1)
+    if(args['withQ']):
+        model = core.spnetworks.__dict__[args["architecture"]](args["backbone"], num_classes=meta_dic['classes'] + 1)
+    else:
+         model = core.networks.__dict__[args["architecture"]](args["backbone"], num_classes=meta_dic['classes'] + 1,
+                process=args[process],kernel_size1=args[kernel_size1],kernel_size2=args[kernel_size2],)
             # process1=args["process1"],process2=args["process2"],with_se=args["with_se"],conv_mode=args["conv_mode"],ratio=args["ratio"],se_ratio=args["se_ratio"])
     # if args["architecture"] == 'DeepLabv3+':
     #     model = DeepLabv3_Plus(args["backbone"], num_classes=meta_dic['classes'] + 1, mode=args["mode"], use_group_norm=args["use_gn"])
@@ -309,7 +325,6 @@ def main(args):
     #     model = SANET_Model(args["backbone"], num_classes=meta_dic['classes'] + 1)
     # elif args["architecture"] == 'CSeg_Model':
     #     model = CSeg_Model(args["backbone"], num_classes=meta_dic['classes'] + 1)
-
 
     param_groups = model.get_parameter_groups()
     params = [
@@ -322,8 +337,11 @@ def main(args):
     model = model.cuda()
     model.train()
     # model.load_state_dict(torch.load('experiments/models/Q_cams_nni2/2021-10-17 17:44:07.pth'))
-    #model.load_state_dict(torch.load('/media/ders/mazhiming/PCAM/experiments/models/train_10.1.pth'))
-    log_func('[i] Architecture is {}'.format(args["architecture"]+str(args["No"])))
+    # model.load_state_dict(torch.load('/media/ders/mazhiming/PCAM/experiments/models/train_10.1.pth'))
+    # model.load_state_dict(torch.load('experiments/models/Qcam_batch16_upfeat/2021-11-07 11:36:36.pth'))
+    param_groups = model.get_parameter_groups()
+    
+    log_func('[i] Architecture is {}'.format(args["architecture"]))
     log_func('[i] Total Params: %.2fM'%(calculate_parameters(model)))
     log_func()
 

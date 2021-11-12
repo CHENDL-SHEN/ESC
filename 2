@@ -1,0 +1,53 @@
+/home/ders/anaconda3/envs/zymenv36/lib/python3.6/site-packages/nni/runtime/platform/standalone.py:31: RuntimeWarning: Running NNI code without runtime. Check the following tutorial if you are new to NNI: https://nni.readthedocs.io/en/stable/Tutorial/QuickStart.html#id1
+  warnings.warn(warning_message, RuntimeWarning)
+{'seed': 0, 'num_workers': 8, 'data_dir': 'VOC2012/VOCdevkit/VOC2012/', 'architecture': 'SANET_Model_fusion', 'backbone': 'resnest50', 'mode': 'fix', 'use_gn': True, 'batch_size': 32, 'max_epoch': 12, 'lr': 0.01, 'wd': 4e-05, 'nesterov': True, 'image_size': 512, 'min_image_size': 320, 'max_image_size': 640, 'alpha': 0.5, 'ksalq': 1, 'sal_th': 0.001, 'loss_mask': 1.0, 'tao': 0.4, 'withQ': True, 'Qmodelpath': 'experiments/models/modelbest18.pth', 'Qloss_rtime': 0, 'print_ratio': 0.1, 'tag': 'Qcam_batch8', 'ch_mid': 512, 'ch_q': 64, 'early_fusion': 1, 'mid_fusion': 0, 'end_process': 0}
+[i] Qcam_batch8
+
+{'seed': 0, 'num_workers': 8, 'data_dir': 'VOC2012/VOCdevkit/VOC2012/', 'architecture': 'SANET_Model_fusion', 'backbone': 'resnest50', 'mode': 'fix', 'use_gn': True, 'batch_size': 32, 'max_epoch': 12, 'lr': 0.01, 'wd': 4e-05, 'nesterov': True, 'image_size': 512, 'min_image_size': 320, 'max_image_size': 640, 'alpha': 0.5, 'ksalq': 1, 'sal_th': 0.001, 'loss_mask': 1.0, 'tao': 0.4, 'withQ': True, 'Qmodelpath': 'experiments/models/modelbest18.pth', 'Qloss_rtime': 0, 'print_ratio': 0.1, 'tag': 'Qcam_batch8', 'ch_mid': 512, 'ch_q': 64, 'early_fusion': 1, 'mid_fusion': 0, 'end_process': 0}
+[i] mean values is [0.485, 0.456, 0.406]
+[i] std values is [0.229, 0.224, 0.225]
+[i] The number of class is 20
+[i] train_transform is Compose(
+    <tools.ai.augment_utils.RandomResize_For_Segmentation object at 0x7fc4d1a15f98>
+    <tools.ai.augment_utils.RandomHorizontalFlip_For_Segmentation object at 0x7fc4d1a15f60>
+    <tools.ai.augment_utils.Normalize_For_Segmentation object at 0x7fc4d191eeb8>
+    <tools.ai.augment_utils.RandomCrop_For_Segmentation object at 0x7fc4d191ef98>
+    <tools.ai.augment_utils.Transpose_For_Segmentation object at 0x7fc4d191eb38>
+)
+
+[i] log_iteration : 33
+[i] val_iteration : 330
+[i] max_iteration : 3,960
+scratched weights : precovn.0.weight
+scratched weights : precovn.1.weight
+scratched bias : precovn.1.bias
+scratched weights : conv1.weight
+scratched bias : conv1.bias
+scratched weights : SEconv.1.weight
+scratched bias : SEconv.1.bias
+scratched weights : SEconv.3.weight
+scratched bias : SEconv.3.bias
+scratched weights : conv2.weight
+scratched bias : conv2.bias
+scratched weights : fusion_early_conv.weight
+scratched weights : prefusion.0.0.weight
+scratched weights : prefusion.0.1.weight
+scratched bias : prefusion.0.1.bias
+scratched weights : prefusion.1.0.weight
+scratched weights : prefusion.1.1.weight
+scratched bias : prefusion.1.1.bias
+scratched weights : prefusion.2.0.weight
+scratched weights : prefusion.2.1.weight
+scratched bias : prefusion.2.1.bias
+scratched weights : prefusion.3.0.weight
+scratched weights : prefusion.3.1.weight
+scratched bias : prefusion.3.1.bias
+scratched weights : fusion_end_conv.weight
+scratched weights : qconv.0.weight
+scratched weights : qconv.1.weight
+scratched bias : qconv.1.bias
+scratched weights : classifier.weight
+[i] Architecture is SANET_Model_fusion
+[i] Total Params: 46.88M
+
+[i] the number of gpu : 4

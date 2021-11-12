@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import cv2 as cv
 
 from torchvision import transforms
 from torch.utils.tensorboard import SummaryWriter
@@ -45,6 +46,9 @@ imagenet_mean = [0.485, 0.456, 0.406]
 imagenet_std = [0.229, 0.224, 0.225]
 palette_img_PIL = Image.open(r"VOC2012/VOCdevkit/VOC2012/SegmentationClass/2007_000033.png")
 palette = palette_img_PIL.getpalette()
+SCAM_PATH='/media/ders/zhangyumin/PuzzleCAM/experiments/res/tain_SCAM'
+OURCAM_PATH='/media/ders/zhangyumin/PuzzleCAM/experiments/res/train_ourcam'
+RECAM_PATH='/media/ders/zhangyumin/PuzzleCAM/experiments/res/train_recam'
 
 class evaluator:
     def __init__(self,domain='train',withQ=True,save_np=False,savepng=False,fast_eval=False,first_check=(320,60.5)) -> None:
@@ -61,9 +65,9 @@ class evaluator:
             self.scale_list  = [0.5,1,1.5,2.0]#- is flip
 
 
-        self.th_list = [0.3,0.35,0.4]
+        self.th_list = [0.25,0.3,0.35]
         #self.refine_list = [0]
-        self.refine_list = [30,35,40]
+        self.refine_list = [5,35,50]
 
         # self.th_list = [0.3]
         # self.refine_list = [20]
@@ -82,7 +86,7 @@ class evaluator:
         self.savept   = False
         self.ptsave_path=[None,None,None]
         self.savepng   = savepng
-        self.save_path='experiments/res/cam_test2_qcam/eps101'
+        self.save_path='experiments/res/cam_test2_qcam/'
         self.save_np=save_np
         self.save_np_path=None
         if not os.path.exists( self.save_path):
@@ -105,7 +109,7 @@ class evaluator:
         self.valid_loader = DataLoader(valid_dataset, batch_size= self.batch_size, num_workers=1, shuffle=False, drop_last=True)
         pass
 
-    def get_cam(self,images,ids,Qs):
+    def get_cam(self,images,ids,Qs,tags):
         with torch.no_grad():
             cam_list=[]
             if(type(self.C_model)==str):
@@ -123,6 +127,22 @@ class evaluator:
                         scaled_images =torch.flip(scaled_images,dims=[3])#?dims
                     logits=self.C_model(scaled_images,q)
                     pred=F.softmax(logits,dim=1)
+                    #cams = (make_cam(refine_cam) * mask)
+                    # for step, (images,image_ids, tags, gt_masks) in enumerate( self.valid_loader ):
+                        #cams = self.getpse(cams,Qs,tags,ids)
+                    pred_ = pred.clone()
+                    mask=tags.unsqueeze(2).unsqueeze(3).cuda()
+                    pred_ = (make_cam(pred_) * mask)
+
+
+                    pred_o=pred_.cpu().numpy()
+                    #pred_=np.asfarray(pred_)
+                    #pred=pred[0]
+                    #pred = np.argmax(pred, axis=0).astype(np.uint8)
+                    np.save(os.path.join('/media/ders/zhangyumin/PuzzleCAM/experiments/res/qcam_npy', ids[0] + '.npy'), pred_o)
+                    ourcam=upfeat(pred,q)
+                    ourcam_o=ourcam.cpu().numpy()
+                    np.save(os.path.join('/media/ders/zhangyumin/PuzzleCAM/experiments/res/ourcam_npy', ids[0] + '.npy'), ourcam_o)
                     cam_list.append(pred)
         if(self.ptsave_path[0]!=None):
             torch.save(cam_list,os.path.join(self.ptsave_path[0],ids[0]+'.pt'))
@@ -159,6 +179,7 @@ class evaluator:
         for cam,Q,s in zip(cam_list,Q_list,self.scale_list):
                 if(self.with_Q):
                     cam=upfeat(cam,Q,16,16)
+                    #save our cam
                 cam = F.interpolate(cam,(int(h),int(w)), mode='bilinear', align_corners=False)
                 if(s<0):
                    cam = torch.flip(cam,dims=[3])#?dims 
@@ -227,11 +248,30 @@ class evaluator:
                     Qs,refinQ = self.get_Q(images,image_ids)
                     torch.cuda.synchronize()
                     t2=time.time()
-                    cams = self.get_cam(images,image_ids,Qs)
+                    cams = self.get_cam(images,image_ids,Qs,tags)
                     torch.cuda.synchronize()
+                    refine_savecam = cams[1]
+                    refinetime=10
+                    refine_savecam_= refine_with_q(refine_savecam,refinQ,refinetime)
+                    refine_savecam_=refine_savecam_.cpu().numpy()
+                    np.save(os.path.join('/media/ders/zhangyumin/PuzzleCAM/experiments/res/recam_npy', image_ids[0] +str(refinetime)+ '.npy'), refine_savecam_)
+
+                    mask=tags.unsqueeze(2).unsqueeze(3).cuda()
+
 
                     cams = self.getpse(cams,Qs,tags,image_ids)
                     t3=time.time()
+                    #对cam做Q下采样，然后再其线性上采样
+                    reqcam=cams.clone()
+                   # _,_,H_,W_=reqcam.numpshape()
+                    reqcam=poolfeat(reqcam, refinQ).cuda()
+                    reqcam=F.interpolate(reqcam,(h,w),mode='nearest')
+                    reqcam=reqcam.cpu().numpy()
+                    reqcam = reqcam * mask
+                    np.save(os.path.join('/media/ders/zhangyumin/PuzzleCAM/experiments/res/recam_npy_new', image_ids[0]+'.npy'), reqcam)
+
+
+
 
 
                     # predictions = self.getpse(cams,Qs)
@@ -243,7 +283,14 @@ class evaluator:
                         if(self.with_Q):
                             refine_cam= refine_with_q(refine_cam,refinQ,refinetime)
                         cams = (make_cam(refine_cam) * mask)
-
+                        #cv.imwrite(os.path.join(RECAM_PATH,refinetime,image_ids+'.png'),cams)
+                        cams_=cams.cpu().numpy()
+                        #cams_=np.asfarray(cams_)
+                    #pred=pred[0]
+                    #pred = np.argmax(pred, axis=0).astype(np.uint8)
+                        if renum==2:
+                            np.save(os.path.join('/media/ders/zhangyumin/PuzzleCAM/experiments/res/pse_npy', image_ids[0] + '.npy'), cams_)
+                    
                         if not self.Top_Left_Crop:
                             resc=1
                             if(self.fast_eval):

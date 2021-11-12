@@ -40,7 +40,7 @@ from datetime import datetime
 from nni.utils import merge_parameter
 import nni
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "2,3,6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,4"
 
 import  core.models as fcnmodel
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
@@ -77,10 +77,10 @@ def get_params():
     ###############################################################################
     # Hyperparameter
     ###############################################################################
-    parser.add_argument('--batch_size', default=12, type=int)
-    parser.add_argument('--max_epoch', default=15, type=int) #***********调#@3
+    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--max_epoch', default=50, type=int) #***********调#@3
 
-    parser.add_argument('--lr', default=0.0005, type=float) #***********调#@3
+    parser.add_argument('--lr', default=0.1, type=float) #***********调#@3
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
 
@@ -93,13 +93,13 @@ def get_params():
     parser.add_argument('--th_step', default=0.5, type=float)#0.4,0.5,0.6
     parser.add_argument('--th_fg', default=0.05, type=float)#0.1,0.05,0.03
     parser.add_argument('--relu_t', default=0.75, type=float)#0.75,0.7,0.8
-    parser.add_argument('--K_same', default=2.01, type=float)#1,2,4,8
+    parser.add_argument('--K_same', default=1.01, type=float)#1,2,4,8
     parser.add_argument('--K_diff', default=2.01, type=float)#1,2,4,8
 
     parser.add_argument('--relu_diff', default=0, type=int) #0,1,2,4,8  
     parser.add_argument('--domain', default='train_aug', type=str)#***********调#@2
     parser.add_argument('--pretrain', default=True, type=str2bool)#***********调#@4
-    parser.add_argument('--pse_path', default='experiments/models/baseline_new_eval/2021-10-14 09:59:48npy', type=str)#***********调#@5
+    parser.add_argument('--pse_path', default='experiments/res/numpy101', type=str)#***********调#@5
 
     parser.add_argument('--tag', default='train_Q_withPse_SP2', type=str)
 
@@ -170,14 +170,7 @@ class SetLoss(_Loss):
 
             diff_map=torch.stack(diff_map_list,dim=1).detach()
 
-            # relu_loss_diff2=torch.sum(affmat[diff_map])
-            # diff_map[center_mask_map]=False   
-
-            # cv2.imwrite('1.png',cams[5][0].detach().cpu().numpy()*255)   # cv2.imwrite('2.png',ignore_masks[5].detach().cpu().numpy()*255)
-            # cv2.imwrite('4.png',(torch.sum(diff_map[5],dim=0)>1).detach().cpu().numpy()*255) # poolfeat(cur_masks_1hot,prob)[5,:,16,15]  
-
-            # sam_map_bf=(sam_map*(cur_masks_1hot_dw[:,21:]==0))#affmat[0,:,10,10].reshape(b,5,5,h,w)[:,1:4,1:4])
-            # sam_map*=center_mask_map
+  
             center_relu_map= (torch.sum(sam_map,dim=1)>15)#diff_map.sum()/8
             center_diff_relu_map= (torch.sum(diff_map,dim=1)>self.args.relu_diff) #cv2.imwrite('1.png',center_diff_relu_map[5].detach().cpu().numpy()*100)  
             # relu_loss_sam=torch.sum(self.relufn(((0.001-affmat)*sam_map)))#torch.sum(affmat,dim=1)affmat[:,12].max()

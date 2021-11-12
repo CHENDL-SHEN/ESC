@@ -61,9 +61,9 @@ class evaluator:
             self.scale_list  = [0.5,1,1.5,2.0]#- is flip
 
 
-        self.th_list = [0.25,0.3,0.35]
+        self.th_list = [0.25] #[0.25,0.3,0.35]
         #self.refine_list = [0]
-        self.refine_list = [25,30,35]
+        self.refine_list =[25] #[25,30,35]
 
         # self.th_list = [0.3]
         # self.refine_list = [20]
@@ -82,9 +82,9 @@ class evaluator:
         self.savept   = False
         self.ptsave_path=[None,None,None]
         self.savepng   = savepng
-        self.save_path='experiments/res/cam_test2/'
+        self.save_path='experiments/res/eps_cam_101'
         self.save_np=save_np
-        self.save_np_path=None
+        self.save_np_path='experiments/res/numpy101'#None
         if not os.path.exists( self.save_path):
                 os.mkdir(self.save_path)
         self.tag    = 'test'

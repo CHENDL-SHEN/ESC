@@ -1,6 +1,8 @@
 {
-    "alpha":{"_type": "choice", "_value": [0.5,1,2]},
-    "ksalq":{"_type": "choice", "_value": [10,40,80]},
-    "Qloss_rtime":{"_type": "choice", "_value": [1]}
+    "lr2":{"_type": "choice", "_value": [400,500]},
+    "lr3":{"_type": "choice", "_value": [10]},
+    "process":{"_type": "choice", "_value": [32,18,16]},
+    "architecture":{"_type": "choice", "_value": ["SANET_Model_new_base"]},
+    "fgORall":{"_type": "choice", "_value": [true]}
 
 }

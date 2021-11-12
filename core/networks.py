@@ -334,7 +334,9 @@ class SANET_Model(Backbone):
 
         self.coord_tensor = np.concatenate([curr_pxl_coord[1:2, :, :], curr_pxl_coord[:1, :, :]])
 
-        self.qcov=nn.Conv2d(2048+9+25, 256, 3,padding=1, bias=False)
+        self.qcov=nn.Conv2d(2048+9+25, 1024, 3,padding=1, bias=False)
+        self.qcov2=nn.Conv2d(1024, 256, 3,padding=1, bias=False)
+
         self.classifier = nn.Conv2d(256, num_classes, 1, bias=False)
 
      
@@ -358,6 +360,7 @@ class SANET_Model(Backbone):
         feat_q = getpoolfeatsum(probs) #torch.sum(feat_q,dim=1)
         _,aff_mat = refine_with_q(None,probs,with_aff=True)
         x=self.qcov(torch.cat([x,feat_q,aff_mat],dim=1))
+        x = self.qcov(x)
         logits = self.classifier(x)
         # logits = resize_for_tensors(logits, inputs.size()[2:], align_corners=False)
         
