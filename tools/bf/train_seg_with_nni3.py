@@ -24,7 +24,7 @@ from nni.utils import merge_parameter
 from torch.utils.data import DataLoader
 from imageio import imsave
 from core.networks import *
-import core.spnetworks
+import core.spnetwork_new
 
 from core.datasets import *
 from tools.general.Q_util import *
@@ -56,7 +56,7 @@ import  core.models as fcnmodel
 import nni
 
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
-os.environ["CUDA_VISIBLE_DEVICES"] = "5"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4,5"
 
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def get_params():
@@ -71,7 +71,7 @@ def get_params():
     ###############################################################################
     # Network
     ###############################################################################
-    parser.add_argument('--architecture', default='Seg_Model', type=str)
+    parser.add_argument('--architecture', default='SANET_Model_new_base', type=str)
     parser.add_argument('--backbone', default='resnest50', type=str)
     parser.add_argument('--mode', default='fix', type=str)
     parser.add_argument('--use_gn', default=True, type=str2bool)
@@ -80,9 +80,9 @@ def get_params():
     ###############################################################################
     # Hyperparameter
     ###############################################################################
-    parser.add_argument('--batch_size', default=32, type=int)
-    #parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--max_epoch', default=8, type=int)#***********调
+    parser.add_argument('--batch_size', default=16, type=int)
+    #parser.add_argument('--bmax_epochatch_size', default=32, type=int)
+    parser.add_argument('--max_epoch', default=12, type=int)#***********调
 
     parser.add_argument('--lr', default=0.01, type=float)#***********调
     parser.add_argument('--wd', default=4e-5, type=float)
@@ -95,24 +95,31 @@ def get_params():
     parser.add_argument('--alpha', default=0.5, type=float)###keyitiao
     parser.add_argument('--ksalq', default=1, type=float)
 
-    # parser.add_argument('--alpha_q', default=0.5, type=float)
-    parser.add_argument('--sal_th', default=0.001, type=float)
-    # parser.add_argument('--sal_or_q', default=False, type=str2bool)
     parser.add_argument('--loss_mask', default=1.0, type=float)
     parser.add_argument('--tao', default=0.4, type=float)
 
     ###############################################################################
     # others
     ###############################################################################
-    parser.add_argument('--withQ', default=False, type=str2bool)#***********改
-    parser.add_argument('--Qmodelpath', default='experiments/models/train_Q_withPse_sal2/2021-11-1509:32:01.pth', type=str)#***********改
+    parser.add_argument('--withQ', default=True, type=str2bool)#***********改
+    parser.add_argument('--Qmodelpath', default='experiments/models/bestQ.pth', type=str)#***********改
     parser.add_argument('--Qloss_rtime', default=0, type=int)
 
     parser.add_argument('--print_ratio', default=0.1, type=float)
 
-    parser.add_argument('--tag', default='cam_batch32', type=str)
+    parser.add_argument('--tag', default='Scam_batch16_upfeat_lr100', type=str)
+
+    ###############################################################################
+    ## parse for model fusion
+    ###############################################################################
+    parser.add_argument('--ch_mid', default=512, type=int)  #1024
+    parser.add_argument('--ch_q', default=64, type=int)
+    parser.add_argument('--lr2', default=400, type=int)
+    parser.add_argument('--lr3', default=10, type=int)
+
+    parser.add_argument('--fgORall', default=True, type=str2bool)
+    parser.add_argument('--process', default=32, type=int)
     
-    # parser.add_argument('--covn', default=1, type=int)
 
     args, _ = parser.parse_known_args()
     return args
@@ -135,8 +142,7 @@ class SetLoss(_Loss):
             
         b, c, h, w = logits.size()
         sailencys = F.interpolate(sailencys, size=(h, w))
-        if( self.args['sal_th']>0.01):
-            sailencys = (sailencys > self.args['sal_th']).float()
+
 
         tagpred = F.avg_pool2d(logits, kernel_size=(h, w), padding=0)#
         loss_cls = F.multilabel_soft_margin_loss(tagpred[:, 1:].view(tagpred.size(0), -1), labels[:,1:])
@@ -180,24 +186,6 @@ class SetLoss(_Loss):
             sal_loss =F.mse_loss(sal_pred,sailencys)
        
         q_loss =torch.tensor(0.0).cuda()
-    
-        if(self.args['withQ'] and False ):
-            # label_map = labels[:,1:].view(16, 20, 1, 1).expand(size=(16, 20, h, w)).bool()#label_map_bg[0,:,0,0]
-                reconstr_feat5= torch.zeros(b,5,h,w).float() #reconstr_feat5.reshape(b,5,-1).max(dim=2)
-                for ii in range(b):
-                    cur=0
-                    for jj in range(21):
-                        if(labels[ii,jj]==1):
-                            reconstr_feat5[ii,cur]=logits[ii,jj]
-                            cur+=1
-                            if(cur>=5):break
-                    pass
-                reconstr_feat=F.softmax(reconstr_feat5, dim=1).cuda()
-                refinecam=reconstr_feat
-                for i in range(self.args['Qloss_rtime']):
-                        refinecam= upfeat(refinecam,prob)
-                        refinecam= poolfeat(refinecam,prob)
-                q_loss =F.mse_loss(reconstr_feat,refinecam)
         return loss_cls,sal_loss,q_loss
 
 def main(args):
@@ -209,7 +197,7 @@ def main(args):
         evaluatorA=evaluatorqcam.evaluator(domain='train_600',fast_eval=True)
     else:
         import evaluator
-        evaluatorA=evaluator.evaluator(domain='train_aug2',withQ=False)
+        evaluatorA=evaluator.evaluator(domain='train',withQ=False)
     
     tensorboard_dir = create_directory(f'./experiments/tensorboards/{args["tag"]}/{TIMESTAMP}/')   
 
@@ -267,7 +255,7 @@ def main(args):
     
     # train_dataset = VOC_Dataset_For_WSSS(args["data_dir, 'train_aug', 'VOC2012/VOCdevkit/VOC2012/saliency_map/', train_transform)
     train_dataset = VOC_Dataset_For_MNSS(
-        args["data_dir"], '/media/ders/zhangyumin/PuzzleCAM/VOC2012/VOCdevkit/VOC2012/SALImages/' ,'train_aug',train_transform)
+        args["data_dir"], 'VOC2012/VOCdevkit/VOC2012/saliency_map/' ,'train_aug',train_transform)
     # valid_dataset = VOC_Dataset_For_Segmentation(args["data_dir, 'train', test_transform)
     valid_dataset = VOC_Dataset_For_Testing_CAM(args["data_dir"], 'train', test_transform)
 
@@ -280,7 +268,10 @@ def main(args):
     log_func('[i] train_transform is {}'.format(train_transform))
     log_func()
 
-    val_iteration = len(train_loader)
+    
+
+    val_iteration = int(len(train_loader))
+    cut_iteration =9*val_iteration
     log_iteration = int(val_iteration * args["print_ratio"])
     max_iteration = args["max_epoch"] * val_iteration
     
@@ -299,9 +290,14 @@ def main(args):
     ###################################################################################
     # Network
     ###################################################################################
-    # model = core.spnetworks.__dict__[args["architecture"]](args["backbone"], num_classes=meta_dic['classes'] + 1)
+    # args["architecture"]= 'SANET_Model_new_base'
+    # 'SANET_Model_new'+str(int(args['No']))
 
-    model = core.networks.__dict__[args["architecture"]](args["backbone"], num_classes=meta_dic['classes'] + 1)
+    
+    if(args['withQ']):
+        model = core.spnetwork_new.__dict__[args["architecture"]](args["backbone"], num_classes=meta_dic['classes'] + 1,process=args["process"],fgORall=args["fgORall"])
+    else:
+         model = core.networks.__dict__[args["architecture"]](args["backbone"], num_classes=meta_dic['classes'] + 1,)
             # process1=args["process1"],process2=args["process2"],with_se=args["with_se"],conv_mode=args["conv_mode"],ratio=args["ratio"],se_ratio=args["se_ratio"])
     # if args["architecture"] == 'DeepLabv3+':
     #     model = DeepLabv3_Plus(args["backbone"], num_classes=meta_dic['classes'] + 1, mode=args["mode"], use_group_norm=args["use_gn"])
@@ -310,19 +306,25 @@ def main(args):
     # elif args["architecture"] == 'CSeg_Model':
     #     model = CSeg_Model(args["backbone"], num_classes=meta_dic['classes'] + 1)
 
-
-    param_groups = model.get_parameter_groups()
+    param_groups = model.get_parameter_groups1()
     params = [
         {'params': param_groups[0], 'lr': args["lr"], 'weight_decay': args["wd"]},
         {'params': param_groups[1], 'lr': 2*args["lr"], 'weight_decay': 0},
         {'params': param_groups[2], 'lr': 10*args["lr"], 'weight_decay': args["wd"]},
         {'params': param_groups[3], 'lr': 20*args["lr"], 'weight_decay': 0},
+        {'params': param_groups[4], 'lr': args["lr2"]*args["lr"], 'weight_decay': args["wd"]},
+        {'params': param_groups[5], 'lr': 2*args["lr2"]*args["lr"], 'weight_decay': 0},
+        {'params': param_groups[6], 'lr': args["lr3"]*args["lr"], 'weight_decay': args["wd"]},
+        {'params': param_groups[7], 'lr': 2*args["lr3"]*args["lr"], 'weight_decay': 0},
     ]
     
     model = model.cuda()
     model.train()
-    # model.load_state_dict(torch.load('experiments/models/Q_cams_nni2/2021-10-17 17:44:07.pth'))
-    #model.load_state_dict(torch.load('/media/ders/mazhiming/PCAM/experiments/models/train_10.1.pth'))
+    # model.load_state_dict(torch.load('experiments/models/Scam_batch16_upfeat_lr100/2021-11-11 09:32:15.pth'))
+    # model.load_state_dict(torch.load('/media/ders/mazhiming/PCAM/experiments/models/train_10.1.pth'))
+    #  model.load_state_dict(torch.load('experiments/models/cam_batch8/2021-11-05 01:42:11_eps.pth')) strick
+    # param_groups = model.get_parameter_groups()
+    
     log_func('[i] Architecture is {}'.format(args["architecture"]))
     log_func('[i] Total Params: %.2fM'%(calculate_parameters(model)))
     log_func()
@@ -375,6 +377,8 @@ def main(args):
     torch.autograd.set_detect_anomaly(True)
     best_valid_mIoU =-1
     for iteration in range(max_iteration):
+        if (iteration>cut_iteration):
+            break
         images, imgids,labels,masks,sailencys= train_iterator.get()
         images = images.cuda()
         labels = labels.cuda()

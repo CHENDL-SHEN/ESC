@@ -91,8 +91,8 @@ class Classifier(Backbone):
             logits = self.global_average_pooling_2d(features)
             return logits, features
         else:
-            x = self.global_average_pooling_2d(x, keepdims=True) 
-            logits = self.classifier(x).view(-1, self.num_classes)
+            # x = self.global_average_pooling_2d(x, keepdims=True) 
+            logits = self.classifier(x)
             return logits
 
 class Classifier_For_Positive_Pooling(Backbone):

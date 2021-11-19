@@ -61,9 +61,9 @@ class evaluator:
             self.scale_list  = [0.5,1,1.5,2.0]#- is flip
 
 
-        self.th_list = [0.3,0.35,0.4]
-        #self.refine_list = [0]
-        self.refine_list = [30,35,40]
+        self.th_list = [0.2,0.25,0.3]
+        self.refine_list = [15,25]
+        # self.refine_list = [0]
 
         # self.th_list = [0.3]
         # self.refine_list = [20]
@@ -82,7 +82,7 @@ class evaluator:
         self.savept   = False
         self.ptsave_path=[None,None,None]
         self.savepng   = savepng
-        self.save_path='experiments/res/cam_test2_qcam/eps101'
+        self.save_path='experiments/res/cam_test2_qcam/eps101_'
         self.save_np=save_np
         self.save_np_path=None
         if not os.path.exists( self.save_path):
@@ -260,7 +260,7 @@ class evaluator:
                                 gt_mask=cv2.resize(gt_mask,(pred_mask.shape[1],pred_mask.shape[0]), interpolation=cv2.INTER_NEAREST)
                                 self.meterlist[self.parms.index((self.refine_list[renum],th))].add(pred_mask, gt_mask)#self.getbest_miou(clear=False) #,self.meterlist[10].get(clear=False)
                                 if(self.savepng):
-                                    if(self.C_model!=None and (self.refine_list[renum],th)==(30,0.3) ):
+                                    if(self.C_model!=None and (self.refine_list[renum],th)==(20,0.25) ):
                                         img_path=os.path.join(self.save_path,image_ids[batch_index]+'.png')
                                         img_pil2= Image.fromarray(pred_mask.astype(np.uint8))
                                         img_pil2.putpalette(palette)

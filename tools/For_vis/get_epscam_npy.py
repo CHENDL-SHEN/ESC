@@ -1,3 +1,8 @@
+import os 
+import sys
+sys.path.append(r"/media/ders/zhangyumin/PuzzleCAM/")
+os.environ["CUDA_VISIBLE_DEVICES"] = "6,7"
+
 from operator import mod
 import os
 from pickle import FALSE, NONE, TRUE
@@ -46,12 +51,13 @@ imagenet_mean = [0.485, 0.456, 0.406]
 imagenet_std = [0.229, 0.224, 0.225]
 palette_img_PIL = Image.open(r"VOC2012/VOCdevkit/VOC2012/SegmentationClass/2007_000033.png")
 palette = palette_img_PIL.getpalette()
-SCAM_PATH='/media/ders/zhangyumin/PuzzleCAM/experiments/res/tain_SCAM'
-OURCAM_PATH='/media/ders/zhangyumin/PuzzleCAM/experiments/res/train_ourcam'
-RECAM_PATH='/media/ders/zhangyumin/PuzzleCAM/experiments/res/train_recam'
+tag_name='resnest50'
+SCAM_PATH='/media/ders/zhangyumin/PuzzleCAM/finalmodel/base_sal/eps-resnest50/CAMs/'+tag_name+'/'
+# OURCAM_PATH='/media/ders/zhangyumin/PuzzleCAM/experiments/res/train_ourcam'
+# RECAM_PATH='/media/ders/zhangyumin/PuzzleCAM/experiments/res/train_recam'
 
 class evaluator:
-    def __init__(self,domain='train',withQ=True,save_np=False,savepng=False,fast_eval=False,first_check=(320,60.5)) -> None:
+    def __init__(self,domain='train',withQ=True,save_np=False,savepng=False,fast_eval=False,first_check=(112320,60.5)) -> None:
         self.C_model = None
         self.Q_model = None
         self.proxy_Q_model =None
@@ -67,7 +73,7 @@ class evaluator:
 
         self.th_list = [0.25,0.3,0.35]
         #self.refine_list = [0]
-        self.refine_list = [5,35,50]
+        self.refine_list = [0]
 
         # self.th_list = [0.3]
         # self.refine_list = [20]
@@ -125,7 +131,7 @@ class evaluator:
                         scaled_images = F.interpolate(scaled_images, (H_,W_), mode='bilinear', align_corners=False)
                     if(s<0):
                         scaled_images =torch.flip(scaled_images,dims=[3])#?dims
-                    logits=self.C_model(scaled_images,q)
+                    logits=self.C_model(scaled_images)
                     pred=F.softmax(logits,dim=1)
                     #cams = (make_cam(refine_cam) * mask)
                     # for step, (images,image_ids, tags, gt_masks) in enumerate( self.valid_loader ):
@@ -250,28 +256,13 @@ class evaluator:
                     t2=time.time()
                     cams = self.get_cam(images,image_ids,Qs,tags)
                     torch.cuda.synchronize()
-                    refine_savecam = cams[1]
-                    refinetime=10
-                    refine_savecam_= refine_with_q(refine_savecam,refinQ,refinetime)
-                    refine_savecam_=refine_savecam_.cpu().numpy()
-                    np.save(os.path.join('/media/ders/zhangyumin/PuzzleCAM/experiments/res/recam_npy', image_ids[0] +str(refinetime)+ '.npy'), refine_savecam_)
 
                     mask=tags.unsqueeze(2).unsqueeze(3).cuda()
 
 
                     cams = self.getpse(cams,Qs,tags,image_ids)
                     t3=time.time()
-                    #对cam做Q下采样，然后再其线性上采样
-                    reqcam=cams.clone()
-                   # _,_,H_,W_=reqcam.numpshape()
-                    reqcam=poolfeat(reqcam, refinQ).cuda()
-                    reqcam=F.interpolate(reqcam,(h,w),mode='nearest')
-                    reqcam=reqcam.cpu().numpy()
-                    reqcam = reqcam * mask
-                    np.save(os.path.join('/media/ders/zhangyumin/PuzzleCAM/experiments/res/recam_npy_new', image_ids[0]+'.npy'), reqcam)
-
-
-
+   
 
 
                     # predictions = self.getpse(cams,Qs)
@@ -279,40 +270,30 @@ class evaluator:
                     mask=tags.unsqueeze(2).unsqueeze(3).cuda()
 
                     for renum in range(len(self.refine_list)):
-                        refinetime =self.refine_list[0] if renum==0 else 5
                         if(self.with_Q):
-                            refine_cam= refine_with_q(refine_cam,refinQ,refinetime)
+                            refine_cam= refine_with_q(cams,refinQ,self.refine_list[renum])
                         cams = (make_cam(refine_cam) * mask)
                         #cv.imwrite(os.path.join(RECAM_PATH,refinetime,image_ids+'.png'),cams)
                         cams_=cams.cpu().numpy()
-                        #cams_=np.asfarray(cams_)
-                    #pred=pred[0]
-                    #pred = np.argmax(pred, axis=0).astype(np.uint8)
-                        if renum==2:
-                            np.save(os.path.join('/media/ders/zhangyumin/PuzzleCAM/experiments/res/pse_npy', image_ids[0] + '.npy'), cams_)
-                    
-                        if not self.Top_Left_Crop:
-                            resc=1
-                            if(self.fast_eval):
-                                    resc=2
-                            cams = F.interpolate(cams,(int(h/resc),int(w/resc)), mode='bilinear', align_corners=False)
-                        if(self.save_np):
-                            np.save(os.path.join(self.save_np_path,image_ids[0]+'.npy'),cams.cpu().numpy())
-                        for th in self.th_list:
-                            cams[:,0]=th#predictions.max()
-                            predictions=torch.argmax(cams,dim=1)
-                            for batch_index in range(images.size()[0]):
-                                pred_mask = get_numpy_from_tensor(predictions[batch_index])
-                                gt_mask = get_numpy_from_tensor(gt_masks[batch_index])
-                                gt_mask=cv2.resize(gt_mask,(pred_mask.shape[1],pred_mask.shape[0]), interpolation=cv2.INTER_NEAREST)
-                                self.meterlist[self.parms.index((self.refine_list[renum],th))].add(pred_mask, gt_mask)#self.getbest_miou(clear=False) #,self.meterlist[10].get(clear=False)
-                                if(self.savepng):
-                                    if(self.C_model!=None and (self.refine_list[renum],th)==(30,0.3) ):
-                                        img_path=os.path.join(self.save_path,image_ids[batch_index]+'.png')
-                                        img_pil2= Image.fromarray(pred_mask.astype(np.uint8))
-                                        img_pil2.putpalette(palette)
-                                        img_pil2.save(img_path)
-                                        pass
+                        reqcam=cams.clone()
+                            # _,_,H_,W_=reqcam.numpshape()
+                        # reqcam = F.interpolate(cams,int(), mode='bilinear', align_corners=False)
+
+                        for batch_index in range(images.size()[0]):
+                                reqcam=reqcam.cpu().numpy()
+                                # reqcam = reqcam * mask
+                                retime=self.refine_list[renum]
+                                if not os.path.exists(SCAM_PATH):
+                                    os.mkdir(SCAM_PATH)
+                                if not os.path.exists(SCAM_PATH+"CAM512"+str(retime)):
+                                    os.mkdir(SCAM_PATH+"CAM512"+str(retime))
+   
+                                np.save(os.path.join(SCAM_PATH+"CAM512"+str(retime), image_ids[batch_index]+'.npy'), cams_[batch_index])
+                                # np.save(os.path.join(SCAM_PATH+"QCAM32_"+str(retime), image_ids[batch_index]+'.npy'), reqcam[batch_index])
+
+
+
+
                     # self.getbest_miou()
                     torch.cuda.synchronize()
                     t4=time.time()
@@ -336,3 +317,19 @@ class evaluator:
                 ret =(ret[0], self.first_check)
 
             return ret
+
+
+if __name__ =='__main__':
+    from core.networks import *
+
+    model = Seg_Model('resnest50', num_classes=20 + 1)
+    model = model.cuda()
+    model.train()
+    model.load_state_dict(torch.load('/media/ders/zhangyumin/PuzzleCAM/finalmodel/base_sal/eps-resnest50/eps.pth'))
+
+    evaluatorA = evaluator(domain='train_aug',withQ=False, fast_eval=False,savepng=FALSE,save_np=False)
+    # evaluatorA = psemakeForQ.evaluator(domain='train_aug',savepng=True,savept=True,th_bg=[0.05,0.1,0.03],th_step=[0.4,0.5,0.6],th_fg=[0.05,0.1,0.2])
+
+    ret = evaluatorA.evaluate(model,'experiments/models/bestQ.pth')
+    print(ret[0])
+    print(ret[1])

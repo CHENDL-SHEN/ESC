@@ -1,7 +1,7 @@
 import os 
 import sys
 sys.path.append(r"/media/ders/zhangyumin/PuzzleCAM/")
-os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 
 from operator import mod
 import os
@@ -51,13 +51,13 @@ imagenet_mean = [0.485, 0.456, 0.406]
 imagenet_std = [0.229, 0.224, 0.225]
 palette_img_PIL = Image.open(r"VOC2012/VOCdevkit/VOC2012/SegmentationClass/2007_000033.png")
 palette = palette_img_PIL.getpalette()
-tag_name='test'
-SCAM_PATH='/media/ders/zhangyumin/PuzzleCAM/experiments/res/SCAMS/'+tag_name+'/'
+tag_name='train'
+SCAM_PATH='finalmodel/base_sal/our-resnest50/SCAMS/'
 # OURCAM_PATH='/media/ders/zhangyumin/PuzzleCAM/experiments/res/train_ourcam'
 # RECAM_PATH='/media/ders/zhangyumin/PuzzleCAM/experiments/res/train_recam'
 
 class evaluator:
-    def __init__(self,domain='train',withQ=True,save_np=False,savepng=False,fast_eval=False,first_check=(2320,60.5)) -> None:
+    def __init__(self,domain='train',withQ=True,save_np=False,savepng=False,fast_eval=False,first_check=(22320,20.5)) -> None:
         self.C_model = None
         self.Q_model = None
         self.proxy_Q_model =None
@@ -73,7 +73,7 @@ class evaluator:
 
         self.th_list = [0.25,0.3,0.35]
         #self.refine_list = [0]
-        self.refine_list = [0,5,50]
+        self.refine_list = [0,5,30]
 
         # self.th_list = [0.3]
         # self.refine_list = [20]
@@ -145,10 +145,10 @@ class evaluator:
                     #pred_=np.asfarray(pred_)
                     #pred=pred[0]
                     #pred = np.argmax(pred, axis=0).astype(np.uint8)
-                    np.save(os.path.join('/media/ders/zhangyumin/PuzzleCAM/experiments/res/qcam_npy', ids[0] + '.npy'), pred_o)
+                    # np.save(os.path.join('/media/ders/zhangyumin/PuzzleCAM/experiments/res/qcam_npy', ids[0] + '.npy'), pred_o)
                     ourcam=upfeat(pred,q)
                     ourcam_o=ourcam.cpu().numpy()
-                    np.save(os.path.join('/media/ders/zhangyumin/PuzzleCAM/experiments/res/ourcam_npy', ids[0] + '.npy'), ourcam_o)
+                    # np.save(os.path.join('/media/ders/zhangyumin/PuzzleCAM/experiments/res/ourcam_npy', ids[0] + '.npy'), ourcam_o)
                     cam_list.append(pred)
         if(self.ptsave_path[0]!=None):
             torch.save(cam_list,os.path.join(self.ptsave_path[0],ids[0]+'.pt'))
@@ -289,8 +289,8 @@ class evaluator:
                                     os.mkdir(SCAM_PATH+"CAM512_"+str(retime))
                                 if not os.path.exists(SCAM_PATH+"QCAM32_"+str(retime)):
                                     os.mkdir(SCAM_PATH+"QCAM32_"+str(retime))
-                                np.save(os.path.join(SCAM_PATH+"CAM512_"+str(retime), image_ids[batch_index]+'.npy'), reqcam[batch_index])
-                                np.save(os.path.join(SCAM_PATH+"QCAM32_"+str(retime), image_ids[batch_index]+'.npy'), cams_[batch_index])
+                                np.save(os.path.join(SCAM_PATH+"CAM512_"+str(retime), image_ids[batch_index]+'.npy'), cams_[batch_index])
+                                np.save(os.path.join(SCAM_PATH+"QCAM32_"+str(retime), image_ids[batch_index]+'.npy'), reqcam[batch_index])
 
 
 
@@ -321,14 +321,14 @@ class evaluator:
 
 
 if __name__ =='__main__':
-    from core.spnetwork_zym import *
+    from core.spnetwork_new import *
 
-    model = SANET_Model_new7('resnest50', num_classes=20 + 1)
+    model = SANET_Model_new_base('resnest50', num_classes=20 + 1)
     model = model.cuda()
     model.train()
-    model.load_state_dict(torch.load('experiments/models/Scam_batch16_upfeat/2021-11-08 20:54:07.pth'))
+    model.load_state_dict(torch.load('finalmodel/base_sal/our-resnest50/2021-11-12 15:09:03.pth'))
 
-    evaluatorA = evaluator(domain='train',withQ=True, fast_eval=False,savepng=FALSE,save_np=False)
+    evaluatorA = evaluator(domain='train_aug',withQ=True, fast_eval=False,savepng=FALSE,save_np=False)
     # evaluatorA = psemakeForQ.evaluator(domain='train_aug',savepng=True,savept=True,th_bg=[0.05,0.1,0.03],th_step=[0.4,0.5,0.6],th_fg=[0.05,0.1,0.2])
 
     ret = evaluatorA.evaluate(model,'experiments/models/bestQ.pth')

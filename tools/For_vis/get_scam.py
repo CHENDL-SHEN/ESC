@@ -60,7 +60,7 @@ import  core.models as fcnmodel
 import nni
 
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"
 
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def get_params():
@@ -533,9 +533,9 @@ if __name__ == '__main__':
 
         #refinecam= upfeat(refinecam,prob)
         img_path = '/media/ders/zhangyumin/DATASETS/dataset/newvoc/VOCdevkit/VOC2012/JPEGImages/'
-        cam_path = "/media/ders/zhangyumin/PuzzleCAM/experiments/res/EPSCAM/"
+        cam_path = "/media/ders/zhangyumin/PuzzleCAM/VOC2012/VOCdevkit/VOC2012/saliency_map"
         #path_list = os.listdir(path)
-        save_path="/media/ders/zhangyumin/PuzzleCAM/experiments/res/train_SCAMnew/CAM_linup/EPSCAM/"
+        save_path="/media/ders/zhangyumin/PuzzleCAM/experiments/result/png/LINEUP/sal_q_lineup/"
         Q_model = fcnmodel.SpixelNet1l_bn().cuda()
         Q_model.load_state_dict(torch.load('/media/ders/zhangyumin/PuzzleCAM/experiments/models/bestQ.pth'))
         Q_model = nn.DataParallel(Q_model)
@@ -550,7 +550,7 @@ if __name__ == '__main__':
             image = cv.imread(os.path.join(img_path,img_id+ '.jpg'))
             cam = cv.imread(os.path.join(cam_path,img_id+ '.png'))
             H,W,_=shape(image)
-            H_,W_=(H//16)*16,(W//16)*16
+            H_,W_=(H//16+1)*16,(W//16+1)*16
 
             #HC,WC,_= shape(cam)
             #HC_,WC_=(HC//16)*16,(WC//16)*16
@@ -573,16 +573,17 @@ if __name__ == '__main__':
             print(shape(image))
             sp_image=cam
             prob = Q_model(image.cuda())
-            sp_image= poolfeat(cam.cuda(),prob)
+            sp_image= poolfeat(cam.cuda(),prob)##给our用
+            #sp_image=F.avg_pool2d(cam.cuda(), kernel_size=(16, 16), padding=0)#给eps
             #sp_image=F.interpolate(sp_image, size=(H, W),mode='nearest')
             #sp_image = upfeat(cam.cuda(),prob)
             #sp_image=resize_out(sp_image)
-            sp_image=F.interpolate(sp_image, size=(H, W),mode='nearest')
+            sp_image=F.interpolate(sp_image, size=(H_, W_),mode='nearest')
             sp_image=sp_image.squeeze(0).transpose(0,1).transpose(1,2)
             
             sp_image=sp_image.cpu()
             sp_image=sp_image.detach().numpy()
-            cv.imwrite(os.path.join(save_path, img_id + '_sp.png'), sp_image)
+            cv.imwrite(os.path.join(save_path, img_id + '.png'), sp_image)
 
     except Exception as exception:
         logger.exception(exception)

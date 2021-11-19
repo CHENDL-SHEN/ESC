@@ -5,9 +5,9 @@ import os
 
 
 
-path = '/media/ders/zhangyumin/PuzzleCAM/experiments/res/SCAMS/test/QCAM32_50'
+path = '/media/ders/zhangyumin/PuzzleCAM/finalmodel/base_sal/our-resnest50/SCAMS/train_aug/QCAM32_0'
 path_list = os.listdir(path)
-save_path="/media/ders/zhangyumin/PuzzleCAM/experiments/res/train_SCAMnew/QCAM32_50"
+save_path="/media/ders/zhangyumin/PuzzleCAM/experiments/result/png/white/QCAM32_0"
 
 
 path_list.sort(key=lambda x:int(x.split('.')[0]))
@@ -36,7 +36,7 @@ cls_mat=np.array([[0,0,0],
          [0,64,128]])
 
 for filename in path_list:
-    npy = np.load(os.path.join(path,filename))
+    npy = np.load(os.path.join(path,filename),allow_pickle=True)
 
     _,H,W=np.shape(npy)
     img_id=filename.split('.')[0]
@@ -62,13 +62,17 @@ for filename in path_list:
         result_cam=cv.cvtColor(result_cam,cv.COLOR_GRAY2BGR)
 
         for j in range(3):
-            #npy_=np.squeeze(npy[:,i,:,:])
-            #bgr_img_=bgr_img[:,:,j]
-            #result_cam[:,:,j]=cv.multiply(npy_,bgr_img_,dst=None, scale=None, dtype=None)
-            result_cam[:,:,j]=(npy[i,:,:]*bgr_img[:,:,j])
-            cam[:,:,j]=cv.add(cam[:,:,j],result_cam[:,:,j])
+            npy_=np.squeeze(npy[i,:,:])
+            npy_fg=(npy_>0.6).astype(np.int_)
+            white_small=(npy_<0.6).astype(np.int_)
+            white_big=( npy_> 0.05).astype(np.int_)
+            #print(white_big)
+            white=white_big * white_small
+            #print(white)
+                  #and (npy.all()>0.4).astype(np.int_)
+            result_cam[:,:,j]=(npy_fg*bgr_img[:,:,j]+white*255)
+            cam[:,:,j]=cam[:,:,j]+result_cam[:,:,j]
     #cv.imshow('result_cam',cam)
     #cv.waitKey(0)
-    a=cv.imwrite(os.path.join(save_path, img_id + '.png'), cam)
-    if a: 
-        print('done')
+    cv.imwrite(os.path.join(save_path, img_id + '.png'), cam)
+    

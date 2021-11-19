@@ -8,7 +8,8 @@ import shutil
 import random
 import argparse
 import numpy as np
-
+from nni.utils import merge_parameter
+import nni 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,49 +38,61 @@ from datetime import datetime
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 os.environ["CUDA_VISIBLE_DEVICES"] = "6,7"
+def get_params():
+    parser = argparse.ArgumentParser()
+        
+    ###############################################################################
+    # Dataset
+    ###############################################################################
+    parser.add_argument('--seed', default=0, type=int)
+    parser.add_argument('--num_workers', default=4, type=int)
+    parser.add_argument('--data_dir', default='VOC2012/VOCdevkit/VOC2012/', type=str)
 
-parser = argparse.ArgumentParser()
+    ###############################################################################
+    # Network
+    ###############################################################################
+    parser.add_argument('--architecture', default='DeepLabv3+', type=str)
+    parser.add_argument('--backbone', default='resnest101', type=str)
+    parser.add_argument('--mode', default='fix', type=str)
+    parser.add_argument('--use_gn', default=True, type=str2bool)
 
-###############################################################################
-# Dataset
-###############################################################################
-parser.add_argument('--seed', default=0, type=int)
-parser.add_argument('--num_workers', default=4, type=int)
-parser.add_argument('--data_dir', default='VOC2012/VOCdevkit/VOC2012/', type=str)
+    ###############################################################################
+    # Hyperparameter
+    ###############################################################################
+    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--max_epoch', default=50, type=int)
 
-###############################################################################
-# Network
-###############################################################################
-parser.add_argument('--architecture', default='DeepLabv3+', type=str)
-parser.add_argument('--backbone', default='resnest101', type=str)
-parser.add_argument('--mode', default='fix', type=str)
-parser.add_argument('--use_gn', default=True, type=str2bool)
+    parser.add_argument('--lr', default=0.007, type=float)
+    parser.add_argument('--wd', default=4e-5, type=float)
+    parser.add_argument('--nesterov', default=True, type=str2bool)
 
-###############################################################################
-# Hyperparameter
-###############################################################################
-parser.add_argument('--batch_size', default=32, type=int)
-parser.add_argument('--max_epoch', default=50, type=int)
+    parser.add_argument('--image_size', default=512, type=int)
+    parser.add_argument('--min_image_size', default=256, type=int)
+    parser.add_argument('--max_image_size', default=1024, type=int)
 
-parser.add_argument('--lr', default=0.007, type=float)
-parser.add_argument('--wd', default=4e-5, type=float)
-parser.add_argument('--nesterov', default=True, type=str2bool)
+    parser.add_argument('--print_ratio', default=0.1, type=float)
 
-parser.add_argument('--image_size', default=512, type=int)
-parser.add_argument('--min_image_size', default=256, type=int)
-parser.add_argument('--max_image_size', default=1024, type=int)
+    parser.add_argument('--tag', default='train_seg_for_ours', type=str)
 
-parser.add_argument('--print_ratio', default=0.1, type=float)
+    parser.add_argument('--label_name', default='AffinityNet@Rresnest269@Puzzle@train@beta=10@exp_times=8@rw@crf=0@color', type=str)
 
-parser.add_argument('--tag', default='train_seg_for_ousrspam', type=str)
 
-parser.add_argument('--label_name', default='AffinityNet@Rresnest269@Puzzle@train@beta=10@exp_times=8@rw@crf=0@color', type=str)
+    args, _ = parser.parse_known_args()
+    return args
+class DottableDict(dict): 
+  def __init__(self, *args, **kwargs): 
+    dict.__init__(self, *args, **kwargs) 
+    self.__dict__ = self 
+  def allowDotting(self, state=True): 
+    if state: 
+      self.__dict__ = self 
+    else: 
+      self.__dict__ = dict() 
 
-if __name__ == '__main__':
+def main(args):
     ###################################################################################
     # Arguments
     ###################################################################################
-    args = parser.parse_args()
     
     log_dir = create_directory(f'./experiments/logs/')
     data_dir = create_directory(f'./experiments/data/')
@@ -92,11 +105,6 @@ if __name__ == '__main__':
          pred_dir ='VOC2012/VOCdevkit/VOC2012/SegmentationClassAug/'
     elif(args.tag == 'train_seg_for_eps'):
          pred_dir ='/media/ders/zhangyumin/EPS-1/resultoc12_eps_pret/result/cam_png_aug/'
-    elif(args.tag == 'train_seg_for_ooa'):
-         pred_dir ='VOC2012/VOCdevkit/VOC2012/SegmentationClassAug/'
-    elif(args.tag == 'train_seg_for_fpan'):
-         pred_dir ='VOC2012/VOCdevkit/VOC2012/SegmentationClassAug/'
-
         
     log_tag=create_directory(f'./experiments/logs/{args.tag}/')
     data_tag=create_directory(f'./experiments/data/{args.tag}/')
@@ -371,8 +379,24 @@ if __name__ == '__main__':
             
             writer.add_scalar('Evaluation/mIoU', mIoU, iteration)
             writer.add_scalar('Evaluation/best_valid_mIoU', best_valid_mIoU, iteration)
-    
+            nni.report_intermediate_result(mIoU)
+
+    nni.report_intermediate_result(best_valid_mIoU)
     write_json(data_path, data_dic)
     writer.close()
 
     print(args.tag)
+    
+if __name__ == '__main__':
+    try:
+        # get parameters form tuner
+        tuner_params = nni.get_next_parameter()
+        logger.debug(tuner_params)
+        params = vars(merge_parameter(get_params(), tuner_params))
+        params=DottableDict(params)
+        
+        print(params)
+        main(params)
+    except Exception as exception:
+        logger.exception(exception)
+        raise

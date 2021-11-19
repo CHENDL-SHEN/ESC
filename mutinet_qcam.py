@@ -1,4 +1,4 @@
-from  evaluatorqcam import *
+from  evaluatorqcam_copy2 import *
 import psemakeForQ
 
 # Copyright (C) 2020 * Ltd. All rights reserved.
@@ -23,7 +23,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from torch.utils.data import DataLoader
 from imageio import imsave
-from core.spnetwork_zym import *
+from core.spnetwork_new import *
 from core.datasets import *
 
 from tools.general.io_utils import *
@@ -43,11 +43,11 @@ import sys
 # import models  
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "5"
-model = SANET_Model_new7('resnest50', num_classes=20 + 1)
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"
+model = SANET_Model_new_base('resnest50', num_classes=20 + 1,process=32,fgORall=True)
 model = model.cuda()
 model.train()
-model.load_state_dict(torch.load('experiments/models/Scam_batch16_upfeat/2021-11-08 20:54:07.pth'))
+model.load_state_dict(torch.load('experiments/models/Scam_batch16_upfeat_uss/2021-11-18 17:49:37.pth'))
 
 # network_data = torch.load('/media/ders/zhangyumin/superpixel_fcn/result/VOCAUG/SpixelNet1l_bn_adam_3000000epochs_epochSize6000_b32_lr5e-05_posW0.003_21_09_15_21_42/model_best.tar')
 # print("=> using pre-trained model '{}'".format(network_data['arch']))
@@ -55,9 +55,9 @@ model.load_state_dict(torch.load('experiments/models/Scam_batch16_upfeat/2021-11
 # Q_model.load_state_dict(torch.load('/media/ders/zhangyumin/PuzzleCAM/experiments/models/train_Q_relu.pth'))
 # Q_model = nn.DataParallel(Q_model)
 # Q_model.eval()
-evaluatorA = evaluator(domain='train',withQ=True, fast_eval=False,savepng=FALSE,save_np=False)
+evaluatorA = evaluator(domain='train',withQ=True, fast_eval=False,savepng=False,save_np=False,save_path='/media/ders/zhangyumin/PuzzleCAM/finalmodel/uss/pseudo/')
 # evaluatorA = psemakeForQ.evaluator(domain='train_aug',savepng=True,savept=True,th_bg=[0.05,0.1,0.03],th_step=[0.4,0.5,0.6],th_fg=[0.05,0.1,0.2])
 
-ret = evaluatorA.evaluate(model,'experiments/models/bestQ.pth')
+ret = evaluatorA.evaluate(model,'experiments/models/train_Q_withPse_uss/2021-11-1723:05:33.pth')
 print(ret[0])
 print(ret[1])

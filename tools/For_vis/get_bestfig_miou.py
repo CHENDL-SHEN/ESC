@@ -10,7 +10,7 @@ sys.path.append(r"/media/ders/zhangyumin/PuzzleCAM/")
 palette_img_PIL = Image.open(r"VOC2012/VOCdevkit/VOC2012/SegmentationClass/2007_000033.png")
 palette = palette_img_PIL.getpalette()
 
-our_path='/media/ders/zhangyumin/PuzzleCAM/finalmodel/base_sal/our-resnest50/pseduo_label_aug/'
+our_path='/media/ders/zhangyumin/deeplab-pytorch/data/results/VOC2012/Segmentation/comp6_val_cls/'
 eps_path='/media/ders/zhangyumin/EPS-1/result/voc12_eps_pret/result/cam_png_aug/'
 mask_path='VOC2012/VOCdevkit/VOC2012/SegmentationClassAug/'
 
@@ -25,27 +25,27 @@ def save_fig(index):
 
     mask = Image.open(mask_data)
     ours =Image.open(ours_data).convert('L')
-    eps=Image.open(eps_data).convert('L')
+    #eps=Image.open(eps_data).convert('L')
     mask=np.array(mask)
     mask=Image.fromarray(mask)
     mask.putpalette(palette)
-    mask.save('experiments/fig4_eps_vs_ours/'+test_list[index][:-1]+'_mask.png')
-    eps=np.array(eps)
-    eps=Image.fromarray(eps)
-    eps.putpalette(palette)
-    eps_=cv2.imread(eps_data)
-    cv2.imwrite(os.path.join('experiments/fig4_eps_vs_ours/'+test_list[index][:-1]+'_eps.png'),eps_)
+    mask.save('experiments/segbest/'+test_list[index][:-1]+'_mask.png')
+    #eps=np.array(eps)
+    #eps=Image.fromarray(eps)
+    #eps.putpalette(palette)
+    #eps_=cv2.imread(eps_data)
+    #cv2.imwrite(os.path.join('experiments/eps_vs_ours/'+test_list[index][:-1]+'_eps.png'),eps_)
     #eps.save('experiments/demo/ne/'+test_list[index][:-1]+'_eps.png')
     ours=np.array(ours)
     ours=Image.fromarray(ours)
     ours.putpalette(palette)
     ours_=cv2.imread(ours_data)
-    cv2.imwrite(os.path.join('experiments/fig4_eps_vs_ours/'+test_list[index][:-1]+'_ours.png'),ours_)
+    cv2.imwrite(os.path.join('experiments/segbest/'+test_list[index][:-1]+'_ours.png'),ours_)
     #ours.save('experiments/demo/ne/'+test_list[index][:-1]+'_ours.png')
 
 if __name__ == '__main__':
     
-    with open('data/train_aug.txt', 'r') as tf:
+    with open('data/val.txt', 'r') as tf:
           test_list = tf.readlines()
     diff=np.zeros([len(test_list),1]) 
     mIou_eps=np.zeros([len(test_list),1]) 
@@ -58,12 +58,12 @@ if __name__ == '__main__':
       
         mask = Image.open(mask_data)
         ours =Image.open(ours_data).convert('L')
-        eps=Image.open(eps_data).convert('L')
+        #eps=Image.open(eps_data).convert('L')
         #mask=cv2.imread(mask_data)
         #eps=cv2.imread(eps_data)
         #ours=cv2.imread(ours_data)
-        h, w= np.shape(mask)
-        eps=eps.resize((w,h))
+        #h, w= np.shape(eps)
+        h,w=np.shape(mask)
         our=ours.resize((w,h))
         ours=our
         #ours=cv2.resize(ours, (int(h),int(w)))  
@@ -76,15 +76,15 @@ if __name__ == '__main__':
             
         #     # cv2.imwrite('experiments/demo/'+test_list[n][:-1]+'_eps.png',np.array(eps))
         #     # cv2.imwrite('experiments/demo/'+test_list[n][:-1]+'_ours.png',np.array(ours))
-        mIou_eps[n]=calculate_mIoU(eps,mask)
-        mIou_our[n]=calculate_mIoU(ours,mask)
-        diff[n]=mIou_our[n]-mIou_eps[n]
-    print(diff.max())
-    index = indices(diff, lambda x: x > 10)
+        #mIou_eps[n]=calculate_mIoU(eps,mask)
+        mIou_our[n]=calculate_mIoU(our,mask)
+        #diff[n]=mIou_our[n]-mIou_eps[n]
+    print(mIou_our.max())
+    index = indices(mIou_our, lambda x: x > 20)
     print(index) 
     print('-------------') 
     for n in range(len(index)):    
-        if mIou_eps[index[n]]>55:
+        if mIou_our[index[n]]>85:
             fig_index=index[n]
             print(test_list[fig_index][:-1])
             save_fig(fig_index)

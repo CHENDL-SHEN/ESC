@@ -5,7 +5,7 @@ maxExecDuration: 150h
 maxTrialNum: 150
 #choice: local, remote
 trainingServicePlatform: local
-searchSpacePath: search_space.json
+searchSpacePath: search_space_deeplab.json
 #choice: true, false
 useAnnotation: false
 tuner:
@@ -15,12 +15,11 @@ tuner:
   # classArgs:
   #   #choice: maximize, minimize
   #   optimize_mode: maximize
-
 trial:
-  command: python3 train_seg_with_nni3.py
+  command: python3 train_segmentation_nni.py
   codeDir: .
-  gpuNum: 4
+  gpuNum: 2
 localConfig:
-  gpuIndices: 0,3,4,5 #4,5,6,7      #4,5,6
+  gpuIndices: 6,7 #4,5,6
   useActiveGpu: True
   maxTrialNumPerGpu: 1

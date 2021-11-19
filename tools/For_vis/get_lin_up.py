@@ -12,8 +12,12 @@ from cv2 import LMEDS, Tonemap, log, polarToCart
 import numpy as np
 import datetime
 
+import cv2 as cv
+from numpy.core.fromnumeric import shape
+
 import torch
 from torch import tensor
+from torch._C import device
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -24,7 +28,7 @@ from nni.utils import merge_parameter
 from torch.utils.data import DataLoader
 from imageio import imsave
 from core.networks import *
-import core.spnetworks
+#import core.spnetworks
 
 from core.datasets import *
 from tools.general.Q_util import *
@@ -56,7 +60,7 @@ import  core.models as fcnmodel
 import nni
 
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
-os.environ["CUDA_VISIBLE_DEVICES"] = "5"
+os.environ["CUDA_VISIBLE_DEVICES"] = "6,7"
 
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def get_params():
@@ -72,7 +76,7 @@ def get_params():
     # Network
     ###############################################################################
     parser.add_argument('--architecture', default='Seg_Model', type=str)
-    parser.add_argument('--backbone', default='resnest50', type=str)
+    parser.add_argument('--backbone', default='resnest101', type=str)
     parser.add_argument('--mode', default='fix', type=str)
     parser.add_argument('--use_gn', default=True, type=str2bool)
     #"backbone": {"_type":"choice","_value":["resnet50","resnet101","resnest50","resnest101"]},
@@ -82,7 +86,7 @@ def get_params():
     ###############################################################################
     parser.add_argument('--batch_size', default=32, type=int)
     #parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--max_epoch', default=8, type=int)#***********调
+    parser.add_argument('--max_epoch', default=20, type=int)#***********调
 
     parser.add_argument('--lr', default=0.01, type=float)#***********调
     parser.add_argument('--wd', default=4e-5, type=float)
@@ -105,12 +109,25 @@ def get_params():
     # others
     ###############################################################################
     parser.add_argument('--withQ', default=False, type=str2bool)#***********改
-    parser.add_argument('--Qmodelpath', default='experiments/models/train_Q_withPse_sal2/2021-11-1509:32:01.pth', type=str)#***********改
+    parser.add_argument('--Qmodelpath', default='/media/ders/zhangyumin/PuzzleCAM/experiments/models/bestQ.pth', type=str)#***********改
     parser.add_argument('--Qloss_rtime', default=0, type=int)
 
     parser.add_argument('--print_ratio', default=0.1, type=float)
 
-    parser.add_argument('--tag', default='cam_batch32', type=str)
+    parser.add_argument('--tag', default='Qcam_batch8', type=str)
+
+    ###############################################################################
+    ## parse for model fusion
+    ###############################################################################
+    parser.add_argument('--ch_mid', default=512, type=int)  #1024
+    parser.add_argument('--ch_q', default=64, type=int)
+    parser.add_argument('--process1', default=0,type=int) 
+    parser.add_argument('--process2', default=4, type=int)
+    parser.add_argument('--with_se', default=0, type=int)
+    parser.add_argument('--ratio', default=1, type=int)
+    parser.add_argument('--conv_mode', default=0, type=int)
+    parser.add_argument('--se_ratio', default=16, type=int)
+    parser.add_argument('--process', default=4, type=int)
     
     # parser.add_argument('--covn', default=1, type=int)
 
@@ -209,7 +226,7 @@ def main(args):
         evaluatorA=evaluatorqcam.evaluator(domain='train_600',fast_eval=True)
     else:
         import evaluator
-        evaluatorA=evaluator.evaluator(domain='train_aug2',withQ=False)
+        evaluatorA=evaluator.evaluator(domain='train',withQ=False)
     
     tensorboard_dir = create_directory(f'./experiments/tensorboards/{args["tag"]}/{TIMESTAMP}/')   
 
@@ -267,7 +284,7 @@ def main(args):
     
     # train_dataset = VOC_Dataset_For_WSSS(args["data_dir, 'train_aug', 'VOC2012/VOCdevkit/VOC2012/saliency_map/', train_transform)
     train_dataset = VOC_Dataset_For_MNSS(
-        args["data_dir"], '/media/ders/zhangyumin/PuzzleCAM/VOC2012/VOCdevkit/VOC2012/SALImages/' ,'train_aug',train_transform)
+        args["data_dir"], 'VOC2012/VOCdevkit/VOC2012/saliency_map/' ,'train_aug',train_transform)
     # valid_dataset = VOC_Dataset_For_Segmentation(args["data_dir, 'train', test_transform)
     valid_dataset = VOC_Dataset_For_Testing_CAM(args["data_dir"], 'train', test_transform)
 
@@ -508,15 +525,68 @@ def main(args):
 if __name__ == '__main__':
     try:
         # get parameters form tuner
-        tuner_params = nni.get_next_parameter()
-        logger.debug(tuner_params)
-        params = vars(merge_parameter(get_params(), tuner_params))
-        print(params)
-        main(params)
+        #tuner_params = nni.get_next_parameter()
+        #logger.debug(tuner_params)
+        #params = vars(merge_parameter(get_params(), tuner_params))
+        #print(params)
+        #main(params)
+
+        #refinecam= upfeat(refinecam,prob)
+        img_path = '/media/ders/zhangyumin/DATASETS/dataset/newvoc/VOCdevkit/VOC2012/JPEGImages/'
+        cam_path = "/media/ders/zhangyumin/PuzzleCAM/experiments/result/png/QCAM32_30/"
+        #path_list = os.listdir(path)
+        save_path="/media/ders/zhangyumin/PuzzleCAM/experiments/result/png/LINEUP/QCAM32_30/"
+        Q_model = fcnmodel.SpixelNet1l_bn().cuda()
+        Q_model.load_state_dict(torch.load('/media/ders/zhangyumin/PuzzleCAM/experiments/models/bestQ.pth'))
+        Q_model = nn.DataParallel(Q_model)
+        Q_model.eval()
+        with open('data/train_aug.txt', 'r') as tf:
+            train_list = tf.readlines()
+        for filename in train_list:
+            print(filename)
+
+            img_id=filename.split('.')[0]
+            img_id=img_id.split('\n')[0]
+            image = cv.imread(os.path.join(img_path,img_id+ '.jpg'))
+            cam = cv.imread(os.path.join(cam_path,img_id+ '.png'))
+            H,W,_=shape(image)
+            H_,W_=(H//16+1)*16,(W//16+1)*16
+
+            HC,WC,_= shape(cam)
+            HC_,WC_=(HC//16)*16,(WC//16)*16
+            print(shape(cam))
+            print(shape(image))
+            resize_in=transforms.Resize([H_,W_])
+            resize_in_C=transforms.Resize([H_//16,W_//16])
+            #resize_out=transforms.Resize([H,W])
+            image=torch.FloatTensor(np.array(image))
+            image=image.transpose(2,0).transpose(1,2).unsqueeze(0)
+            image=resize_in(image)
+            #image.cuda()
+            #image=image.float
+            #image=image.to(device)
+            #image=torch.FloatTensor(image)
+            cam=torch.FloatTensor(np.array(cam))
+            cam=cam.transpose(2,0).transpose(1,2).unsqueeze(0)
+            cam=resize_in_C(cam)
+            print(shape(cam))
+            print(shape(image))
+            sp_image=cam.cuda()
+            #prob = Q_model(image.cuda())
+            #sp_image= poolfeat(cam.cuda(),prob)
+            sp_image=F.interpolate(sp_image, size=(H_, W_),mode='nearest')
+
+            #sp_image = upfeat(cam.cuda(),prob)
+            #sp_image=resize_out(sp_image)
+            sp_image=sp_image.squeeze(0).transpose(0,1).transpose(1,2)
+            
+            sp_image=sp_image.cpu()
+            sp_image=sp_image.detach().numpy()
+            cv.imwrite(os.path.join(save_path, img_id + '.png'), sp_image)
+
     except Exception as exception:
         logger.exception(exception)
         raise
-
 
 
         

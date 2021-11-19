@@ -56,7 +56,7 @@ import  core.models as fcnmodel
 import nni
 
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,4,5"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4,5"
 
 start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def get_params():
@@ -72,7 +72,7 @@ def get_params():
     # Network
     ###############################################################################
     parser.add_argument('--architecture', default='SANET_Model_new_base', type=str)
-    parser.add_argument('--backbone', default='resnest50', type=str)
+    parser.add_argument('--backbone', default='resnest101', type=str)
     parser.add_argument('--mode', default='fix', type=str)
     parser.add_argument('--use_gn', default=True, type=str2bool)
     #"backbone": {"_type":"choice","_value":["resnet50","resnet101","resnest50","resnest101"]},
@@ -81,7 +81,7 @@ def get_params():
     # Hyperparameter
     ###############################################################################
     parser.add_argument('--batch_size', default=32, type=int)
-    #parser.add_argument('--batch_size', default=32, type=int)
+    #parser.add_argument('--bmax_epochatch_size', default=32, type=int)
     parser.add_argument('--max_epoch', default=12, type=int)#***********调
 
     parser.add_argument('--lr', default=0.01, type=float)#***********调
@@ -95,9 +95,6 @@ def get_params():
     parser.add_argument('--alpha', default=0.5, type=float)###keyitiao
     parser.add_argument('--ksalq', default=1, type=float)
 
-    # parser.add_argument('--alpha_q', default=0.5, type=float)
-    parser.add_argument('--sal_th', default=0.001, type=float)
-    # parser.add_argument('--sal_or_q', default=False, type=str2bool)
     parser.add_argument('--loss_mask', default=1.0, type=float)
     parser.add_argument('--tao', default=0.4, type=float)
 
@@ -117,15 +114,12 @@ def get_params():
     ###############################################################################
     parser.add_argument('--ch_mid', default=512, type=int)  #1024
     parser.add_argument('--ch_q', default=64, type=int)
-    parser.add_argument('--lr2', default=500, type=int)
+    parser.add_argument('--lr2', default=400, type=int)
     parser.add_argument('--lr3', default=10, type=int)
 
     parser.add_argument('--fgORall', default=True, type=str2bool)
     parser.add_argument('--process', default=32, type=int)
-    # parser.add_argument('--with_nni', default=False, type=bool)
-
     
-    # parser.add_argument('--covn', default=1, type=int)
 
     args, _ = parser.parse_known_args()
     return args
@@ -148,8 +142,7 @@ class SetLoss(_Loss):
             
         b, c, h, w = logits.size()
         sailencys = F.interpolate(sailencys, size=(h, w))
-        if( self.args['sal_th']>0.01):
-            sailencys = (sailencys > self.args['sal_th']).float()
+
 
         tagpred = F.avg_pool2d(logits, kernel_size=(h, w), padding=0)#
         loss_cls = F.multilabel_soft_margin_loss(tagpred[:, 1:].view(tagpred.size(0), -1), labels[:,1:])
@@ -275,8 +268,12 @@ def main(args):
     log_func('[i] train_transform is {}'.format(train_transform))
     log_func()
 
-    val_iteration = len(train_loader)
-    cut_iteration =10*val_iteration
+    
+
+    val_iteration = int(len(train_loader))
+    cut_iteration =9*val_iteration
+    start_val_iteration =4*val_iteration
+    
     log_iteration = int(val_iteration * args["print_ratio"])
     max_iteration = args["max_epoch"] * val_iteration
     
@@ -478,6 +475,8 @@ def main(args):
         if (iteration + 1) % val_iteration == 0:
             #mIoU, threshold = evaluate(valid_loader)
             #best_mIoU,best_th = evaluate(valid_loader)
+            if(iteration<start_val_iteration):
+                continue
             mIoU,re_th = evaluatorA.evaluate(model,args['Qmodelpath'])
             refine,threshold=re_th
             if best_valid_mIoU == -1 or best_valid_mIoU < mIoU:

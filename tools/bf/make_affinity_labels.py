@@ -1,4 +1,4 @@
-# Copyright (C) 2020 * Ltd. All rights reserved.
+kill -9# Copyright (C) 2020 * Ltd. All rights reserved.
 # author : Sanghyeon Jo <josanghyeokn@gmail.com>
 
 import os

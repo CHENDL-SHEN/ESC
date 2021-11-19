@@ -1,8 +1,5 @@
 {
-    "lr2":{"_type": "choice", "_value": [400,500]},
-    "lr3":{"_type": "choice", "_value": [10]},
-    "process":{"_type": "choice", "_value": [32,18,16]},
-    "architecture":{"_type": "choice", "_value": ["SANET_Model_new_base"]},
-    "fgORall":{"_type": "choice", "_value": [true]}
+    "backbone":{"_type": "choice", "_value": ["resnest50","resnest101"]},
+    "fgORall":{"_type": "tag", "_value": ["resnest50","resnest101"]}
 
 }

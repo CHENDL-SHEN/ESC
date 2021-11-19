@@ -316,7 +316,7 @@ class SANET_Model_new16(Backbone):
 
 class SANET_Model_new_base(Backbone):
 
-    def __init__(self, model_name, num_classes=21,process=64,fgORall=False):
+    def __init__(self, model_name, num_classes=21,process=32,fgORall=True):
         super().__init__(model_name, num_classes, mode='fix',segmentation=False)
         ch_q=process
         self.outc=9*2
@@ -352,7 +352,7 @@ class SANET_Model_new_base(Backbone):
 
     def get_tconv_cam(self,logits,tconv):
         if(self.outc==18):
-            bg_aff=get_noliner(F.softmax(tconv[:,:9],dim=1))#torch.sum(bg_aff,dim=1).max()
+            bg_aff=get_noliner(F.softmax(tconv[:,:9],dim=1))#torch.sum(fg_aff).max()# fg_aff[0,:,10:20,10:20].detach().cpu().numpy()
             fg_aff=get_noliner(F.softmax(tconv[:,9:],dim=1))#torch.sum(aff22).min()
             bg= upfeat(logits[:,0:1],bg_aff,1,1)
             fg= upfeat(logits[:,1:],fg_aff,1,1)
@@ -424,32 +424,30 @@ class SANET_Model_new_base(Backbone):
         return groups
 
 
+
+
 class SANET_Model_new_base1(SANET_Model_new_base):
         def __init__(self, model_name, num_classes=21,process=64,fgORall=False):
             super().__init__(model_name, num_classes, process,fgORall)
             ch_q=process
   
             # self.load_state_dict(torch.load('experiments/models/cam_batch8/2021-11-05 01:42:11_eps.pth'),strict=False) 
-            self.get_qfeats=nn.Sequential(
-                                conv_dilation(True,9, ch_q,  3, stride=1,dilation=16),
-                                conv(True,ch_q, ch_q,  3, stride=2), ##包含了卷积/正则化/Relu/maxpooling
-                                conv(True,ch_q,ch_q*2, 3, stride=2),
-                                conv(True,ch_q*2,ch_q*4, 3, stride=2),
-                                conv(True,ch_q*4,ch_q*8, 3, stride=2),
-                                )
-            self.get_tran_conv=nn.Sequential(
-                conv(False,ch_q*8+2048, int(1024),3),
-                conv(False,1024,256,3),
-                conv(False,256,128,3),
-                conv(False,128,  self.outc,1),
-            )  
-            self.get_tran_conv=nn.Sequential(
-                conv(False,ch_q*8+2048, int(1024),1),
-                conv(False,1024,512,3),
-                conv(False,512,256,1),
-                conv(False,256,128,3),
-                conv(False,128,  self.outc,1),
-                )   
+        def get_conv_cam(self,logits,tconv):
+            if(self.outc==18):
+                bg_aff=F.softmax(tconv[:,:9],dim=1)#torch.sum(bg_aff,dim=1).max()
+                fg_aff=F.softmax(tconv[:,9:],dim=1)#torch.sum(aff22).min()
+                bg= upfeat(logits[:,0:1],bg_aff,1,1)
+                fg= upfeat(logits[:,1:],fg_aff,1,1)
+                logits =torch.cat([bg,fg],dim=1)
+                return logits
+            else:
+                logits_list=[]
+                for i in range (logits.shape[1]):
+                        cur_aff=get_noliner(F.softmax(tconv[:,i*9:(i+1)*9],dim=1))#torch.sum(cur_aff,dim=1).min()
+                        cur_c= upfeat(logits[:,i:i+1],cur_aff,1,1)
+                        logits_list.append(cur_c)
+                logits =torch.cat(logits_list,dim=1)
+                return logits
         def forward(self, inputs,probs):
             b,c,w,h=probs.shape
             # with torch.no_grad():
@@ -461,6 +459,6 @@ class SANET_Model_new_base1(SANET_Model_new_base):
             q=torch.cat([x5.detach(),q],dim=1)
             tconv = self.get_tran_conv(q)
 
-            logits = self.get_tconv_cam(logits,tconv)
+            logits = self.get_conv_cam(logits,tconv)
             return logits
 

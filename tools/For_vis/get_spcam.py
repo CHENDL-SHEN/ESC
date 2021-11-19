@@ -533,9 +533,9 @@ if __name__ == '__main__':
 
         #refinecam= upfeat(refinecam,prob)
         img_path = '/media/ders/zhangyumin/DATASETS/dataset/newvoc/VOCdevkit/VOC2012/JPEGImages/'
-        cam_path = "/media/ders/zhangyumin/PuzzleCAM/experiments/res/train_recam/"
+        cam_path = "/media/ders/zhangyumin/PuzzleCAM/VOC2012/VOCdevkit/VOC2012/saliency_map"
         #path_list = os.listdir(path)
-        save_path="/media/ders/zhangyumin/PuzzleCAM/experiments/res/train_reSCAM/"
+        save_path="/media/ders/zhangyumin/PuzzleCAM/experiments/result/png/LINEUP/sal_q_lineup/"
         Q_model = fcnmodel.SpixelNet1l_bn().cuda()
         Q_model.load_state_dict(torch.load('/media/ders/zhangyumin/PuzzleCAM/experiments/models/bestQ.pth'))
         Q_model = nn.DataParallel(Q_model)
@@ -548,7 +548,7 @@ if __name__ == '__main__':
             img_id=filename.split('.')[0]
             img_id=img_id.split('\n')[0]
             image = cv.imread(os.path.join(img_path,img_id+ '.jpg'))
-            cam = cv.imread(os.path.join(cam_path,img_id+ '35.png'))
+            cam = cv.imread(os.path.join(cam_path,img_id+ '.png'))
             H,W,_=shape(image)
             H_,W_=(H//16)*16,(W//16)*16
 

@@ -51,6 +51,10 @@ class VOC_Dataset(torch.utils.data.Dataset):
                 './data/%s.txt' % domain).readlines()]
         else:
             self.image_id_list = domain
+        if(domain == 'test'):
+            self.image_dir='/media/ders/zhangyumin/DATASETS/dataset/voc_seg_deeplab/data/VOCtrainval_11-May-2012/VOCdevkit/VOCdevkit/VOC2012/JPEGImages/'
+            self.xml_dir='/media/ders/zhangyumin/DATASETS/dataset/voc_seg_deeplab/data/VOCtrainval_11-May-2012/VOCdevkit/VOCdevkit/VOC2012/Annotations/'
+            
 
         self.with_id = with_id
         self.with_tags = with_tags
@@ -73,6 +77,7 @@ class VOC_Dataset(torch.utils.data.Dataset):
 
     def get_tags(self, image_id):
         _, tags = read_xml(self.xml_dir + image_id + '.xml')
+        
         return tags
 
     def __getitem__(self, index):
@@ -160,7 +165,28 @@ class VOC_Dataset_For_Evaluation(VOC_Dataset):
         label[0] = 1
         return image, image_id, label, mask
 
+class VOC_Dataset_For_Evaluation_test(VOC_Dataset):
+    def __init__(self, root_dir, domain, transform=None):
+        super().__init__(root_dir, domain, with_tags=False, with_id=True, with_mask=True)
+        self.transform = transform
+        data = read_json('./data/VOC_2012.json')
+        self.class_dic = data['class_dic']
+        self.classes = data['classes']
+        cmap_dic, _, class_names = get_color_map_dic()
+        self.colors = np.asarray([cmap_dic[class_name]
+                                 for class_name in class_names])
 
+    def __getitem__(self, index):
+        image, image_id, mask = super().__getitem__(index)
+
+        if self.transform is not None:
+            input_dic = {'image': image, 'mask': mask}
+            output_dic = self.transform(input_dic)
+
+            image = output_dic['image']
+            mask = output_dic['mask']
+
+        return image, image_id, mask
 class VOC_Dataset_For_WSSS(VOC_Dataset):
     def __init__(self, root_dir, domain, pred_dir, transform=None):
         super().__init__(root_dir, domain, with_id=True)
