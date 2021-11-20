@@ -12,3 +12,12 @@ def write_json(filepath, data):
     with open(filepath, 'w') as f:
         json.dump(data, f, indent = '\t')
 
+class DottableDict(dict): 
+  def __init__(self, *args, **kwargs): 
+    dict.__init__(self, *args, **kwargs) 
+    self.__dict__ = self 
+  def allowDotting(self, state=True): 
+    if state: 
+      self.__dict__ = self 
+    else: 
+      self.__dict__ = dict() 

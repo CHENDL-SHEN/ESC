@@ -13,16 +13,12 @@ import torch.utils.model_zoo as model_zoo
 from .arch_resnet import resnet
 from .arch_resnest import resnest
 from .abc_modules import ABC_Model
-from .deeplab_utils import ASPP, Decoder
-from .aff_utils import PathIndex
-from .puzzle_utils import tile_features, merge_features
-from tools.ai.torch_utils import resize_for_tensors
 from tools.general.Q_util import *
+from core.models.model_util import conv
+
 #######################################################################
 # Normalization
 #######################################################################
-from .sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
-
 class FixedBatchNorm(nn.BatchNorm2d):
     def forward(self, x):
         return F.batch_norm(x, self.running_mean, self.running_var, self.weight, self.bias, training=False, eps=self.eps)
@@ -30,6 +26,53 @@ class FixedBatchNorm(nn.BatchNorm2d):
 def group_norm(features):
     return nn.GroupNorm(4, features)
 #######################################################################
+
+def conv_bn(batchNorm, in_planes, out_planes, kernel_size=3, stride=1):
+    if batchNorm:
+        return nn.Sequential(
+            nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=(kernel_size-1)//2, bias=False),
+            nn.BatchNorm2d(out_planes),
+            nn.ReLU(inplace=True), 
+            nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
+        )
+    else:
+        return nn.Sequential(
+            nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=(kernel_size-1)//2, bias=True),
+            nn.ReLU(inplace=True), 
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        )
+
+def conv_dilation(batchNorm, in_planes, out_planes, kernel_size=3, stride=1,dilation=16):
+    if batchNorm:
+        return nn.Sequential(
+            nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=dilation, bias=False,dilation=dilation,padding_mode='circular'),
+            nn.BatchNorm2d(out_planes),
+            nn.ReLU(inplace=True), 
+            # nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
+        )
+    else:
+        return nn.Sequential(
+            nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=(kernel_size-1)//2, bias=True,dilation=dilation,padding_mode='circular'),
+            nn.ReLU(inplace=True), 
+            # nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
+        )
+
+def get_noliner(features):
+            b, c, h, w = features.shape
+            if(c==9):
+                feat_pd = F.pad(features, (1, 1, 1, 1), mode='constant', value=0)
+            elif(c==25):
+                feat_pd = F.pad(features, (2, 2, 2, 2), mode='constant', value=0)
+
+            diff_map_list=[]
+            nn=int(math.sqrt(c))
+            for i in range(nn):
+                for j in range(nn):
+                        diff_map_list.append(feat_pd[:,i*nn+j,i:i+h,j:j+w])
+            ret = torch.stack(diff_map_list,dim=1)
+            return ret
+
+
 
 class Backbone(nn.Module, ABC_Model):
     def __init__(self, model_name, num_classes=20, mode='fix', segmentation=False):
@@ -70,186 +113,7 @@ class Backbone(nn.Module, ABC_Model):
         self.stage4 = nn.Sequential(self.model.layer3)
         self.stage5 = nn.Sequential(self.model.layer4)
 
-class Classifier(Backbone):
-    def __init__(self, model_name, num_classes=20, mode='fix'):
-        super().__init__(model_name, num_classes, mode)
-        
-        self.classifier = nn.Conv2d(2048, num_classes, 1, bias=False)
-        self.num_classes = num_classes
-
-        self.initialize([self.classifier])
-    
-    def forward(self, x, with_cam=False):
-        x = self.stage1(x)
-        x = self.stage2(x)
-        x = self.stage3(x)
-        x = self.stage4(x)
-        x = self.stage5(x)
-        
-        if with_cam:
-            features = self.classifier(x)
-            logits = self.global_average_pooling_2d(features)
-            return logits, features
-        else:
-            # x = self.global_average_pooling_2d(x, keepdims=True) 
-            logits = self.classifier(x)
-            return logits
-
-class Classifier_For_Positive_Pooling(Backbone):
-    def __init__(self, model_name, num_classes=20, mode='fix'):
-        super().__init__(model_name, num_classes, mode)
-        
-        self.classifier = nn.Conv2d(2048, num_classes, 1, bias=False)
-        self.num_classes = num_classes
-        
-        self.initialize([self.classifier])
-    
-    def forward(self, x, with_cam=False):
-        x = self.stage1(x)
-        x = self.stage2(x)
-        x = self.stage3(x)
-        x = self.stage4(x)
-        x = self.stage5(x)
-        
-        if with_cam:
-            features = self.classifier(x)
-            logits = self.global_average_pooling_2d(features)
-            return logits, features
-        else:
-            x = self.global_average_pooling_2d(x, keepdims=True) 
-            logits = self.classifier(x).view(-1, self.num_classes)
-            return logits
-       
-class AffinityNet(Backbone):
-    def __init__(self, model_name, path_index=None):
-        super().__init__(model_name, None, 'fix')
-
-        if '50' in model_name:
-            fc_edge1_features = 64
-        else:
-            fc_edge1_features = 128
-
-        self.fc_edge1 = nn.Sequential(
-            nn.Conv2d(fc_edge1_features, 32, 1, bias=False),
-            nn.GroupNorm(4, 32),
-            nn.ReLU(inplace=True),
-        )
-        self.fc_edge2 = nn.Sequential(
-            nn.Conv2d(256, 32, 1, bias=False),
-            nn.GroupNorm(4, 32),
-            nn.ReLU(inplace=True),
-        )
-        self.fc_edge3 = nn.Sequential(
-            nn.Conv2d(512, 32, 1, bias=False),
-            nn.GroupNorm(4, 32),
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
-            nn.ReLU(inplace=True),
-        )
-        self.fc_edge4 = nn.Sequential(
-            nn.Conv2d(1024, 32, 1, bias=False),
-            nn.GroupNorm(4, 32),
-            nn.Upsample(scale_factor=4, mode='bilinear', align_corners=False),
-            nn.ReLU(inplace=True),
-        )
-        self.fc_edge5 = nn.Sequential(
-            nn.Conv2d(2048, 32, 1, bias=False),
-            nn.GroupNorm(4, 32),
-            nn.Upsample(scale_factor=4, mode='bilinear', align_corners=False),
-            nn.ReLU(inplace=True),
-        )
-        self.fc_edge6 = nn.Conv2d(160, 1, 1, bias=True)
-
-        self.backbone = nn.ModuleList([self.stage1, self.stage2, self.stage3, self.stage4, self.stage5])
-        self.edge_layers = nn.ModuleList([self.fc_edge1, self.fc_edge2, self.fc_edge3, self.fc_edge4, self.fc_edge5, self.fc_edge6])
-
-        if path_index is not None:
-            self.path_index = path_index
-            self.n_path_lengths = len(self.path_index.path_indices)
-            for i, pi in enumerate(self.path_index.path_indices):
-                self.register_buffer("path_indices_" + str(i), torch.from_numpy(pi))
-    
-    def train(self, mode=True):
-        super().train(mode)
-        self.backbone.eval()
-
-    def forward(self, x, with_affinity=False):
-        x1 = self.stage1(x).detach()
-        x2 = self.stage2(x1).detach()
-        x3 = self.stage3(x2).detach()
-        x4 = self.stage4(x3).detach()
-        x5 = self.stage5(x4).detach()
-        
-        edge1 = self.fc_edge1(x1)
-        edge2 = self.fc_edge2(x2)
-        edge3 = self.fc_edge3(x3)[..., :edge2.size(2), :edge2.size(3)]
-        edge4 = self.fc_edge4(x4)[..., :edge2.size(2), :edge2.size(3)]
-        edge5 = self.fc_edge5(x5)[..., :edge2.size(2), :edge2.size(3)]
-
-        edge = self.fc_edge6(torch.cat([edge1, edge2, edge3, edge4, edge5], dim=1))
-
-        if with_affinity:
-            return edge, self.to_affinity(torch.sigmoid(edge))
-        else:
-            return edge
-
-    def get_edge(self, x, image_size=512, stride=4):
-        feat_size = (x.size(2)-1)//stride+1, (x.size(3)-1)//stride+1
-
-        x = F.pad(x, [0, image_size-x.size(3), 0, image_size-x.size(2)])
-        edge_out = self.forward(x)
-        edge_out = edge_out[..., :feat_size[0], :feat_size[1]]
-        edge_out = torch.sigmoid(edge_out[0]/2 + edge_out[1].flip(-1)/2)
-        
-        return edge_out
-    
-    """
-    aff = self.to_affinity(torch.sigmoid(edge_out))
-    pos_aff_loss = (-1) * torch.log(aff + 1e-5)
-    neg_aff_loss = (-1) * torch.log(1. + 1e-5 - aff)
-    """
-    def to_affinity(self, edge):
-        aff_list = []
-        edge = edge.view(edge.size(0), -1)
-        
-        for i in range(self.n_path_lengths):
-            ind = self._buffers["path_indices_" + str(i)]
-            ind_flat = ind.view(-1)
-            dist = torch.index_select(edge, dim=-1, index=ind_flat)
-            dist = dist.view(dist.size(0), ind.size(0), ind.size(1), ind.size(2))
-            aff = torch.squeeze(1 - F.max_pool2d(dist, (dist.size(2), 1)), dim=2)
-            aff_list.append(aff)
-        aff_cat = torch.cat(aff_list, dim=1)
-        return aff_cat
-
-class DeepLabv3_Plus(Backbone):
-    def __init__(self, model_name, num_classes=21, mode='fix', use_group_norm=False):
-        super().__init__(model_name, num_classes, mode, segmentation=False)
-        
-        if use_group_norm:
-            norm_fn_for_extra_modules = group_norm
-        else:
-            norm_fn_for_extra_modules = self.norm_fn
-        
-        self.aspp = ASPP(output_stride=16, norm_fn=norm_fn_for_extra_modules)
-        self.decoder = Decoder(num_classes, 256, norm_fn_for_extra_modules)
-        
-    def forward(self, x, with_cam=False):
-        inputs = x
-
-        x = self.stage1(x)
-        x = self.stage2(x)
-        x_low_level = x
-        
-        x = self.stage3(x)
-        x = self.stage4(x)
-        x = self.stage5(x)
-        
-        x = self.aspp(x)
-        x = self.decoder(x, x_low_level)
-        x = resize_for_tensors(x, inputs.size()[2:], align_corners=True)
-
-        return x
-class Seg_Model(Backbone):
+class CAM_Model(Backbone):
     def __init__(self, model_name, num_classes=21):
         super().__init__(model_name, num_classes, mode='fix', segmentation=False)
         
@@ -266,102 +130,101 @@ class Seg_Model(Backbone):
         # logits = resize_for_tensors(logits, inputs.size()[2:], align_corners=False)
         
         return logits
+    
+class SP_CAM_Model(Backbone):
 
-class CSeg_Model(Backbone):
     def __init__(self, model_name, num_classes=21):
-        super().__init__(model_name, num_classes, 'fix')
+        super().__init__(model_name, num_classes, mode='fix',segmentation=False)
+        ch_q=32
+        self.outc=9*2
 
-        if '50' in model_name:
-            fc_edge1_features = 64
-        else:
-            fc_edge1_features = 128
+        self.get_qfeats=nn.Sequential(
+                        conv_dilation(True,9,ch_q,  3, stride=1,dilation=16),
+                        conv(True,ch_q, ch_q,  3, stride=2), 
+                        conv(True,ch_q,ch_q*2, 3, stride=2),
+                        conv(True,ch_q*2,ch_q*4, 3, stride=2),
+                        conv(True,ch_q*4,ch_q*4, 3, stride=2),
+                        )
+                
+        self.get_tran_conv_parms=nn.Sequential(
+                conv(False,ch_q*4+2048, int(1024),3),
+                conv(False,1024,256,3),
+                conv(False,256,128,3),
+                conv(False,128,  self.outc,1),
+            )   
+        self.classifier = nn.Conv2d(2048, num_classes, 1, bias=False)
 
-        self.fc_edge1 = nn.Sequential(
-            nn.Conv2d(fc_edge1_features, 32, 1, bias=False),
-            nn.GroupNorm(4, 32),
-            nn.ReLU(inplace=True),
-        )
-        self.fc_edge2 = nn.Sequential(
-            nn.Conv2d(256, 32, 1, bias=False),
-            nn.GroupNorm(4, 32),
-            nn.ReLU(inplace=True),
-        )
-        self.fc_edge3 = nn.Sequential(
-            nn.Conv2d(512, 32, 1, bias=False),
-            nn.GroupNorm(4, 32),
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
-            nn.ReLU(inplace=True),
-        )
-        self.fc_edge4 = nn.Sequential(
-            nn.Conv2d(1024, 32, 1, bias=False),
-            nn.GroupNorm(4, 32),
-            nn.Upsample(scale_factor=4, mode='bilinear', align_corners=False),
-            nn.ReLU(inplace=True),
-        )
-        self.fc_edge5 = nn.Sequential(
-            nn.Conv2d(2048, 32, 1, bias=False),
-            nn.GroupNorm(4, 32),
-            nn.Upsample(scale_factor=4, mode='bilinear', align_corners=False),
-            nn.ReLU(inplace=True),
-        )
-        self.fc_edge6 = nn.Conv2d(160, num_classes, 1, bias=True)
-
-    def forward(self, x):
-        x1 = self.stage1(x)
+    def get_x5_features(self,inputs):
+        x1 = self.stage1(inputs)
         x2 = self.stage2(x1)
         x3 = self.stage3(x2)
         x4 = self.stage4(x3)
         x5 = self.stage5(x4)
-        
-        edge1 = self.fc_edge1(x1)
-        edge2 = self.fc_edge2(x2)
-        edge3 = self.fc_edge3(x3)[..., :edge2.size(2), :edge2.size(3)]
-        edge4 = self.fc_edge4(x4)[..., :edge2.size(2), :edge2.size(3)]
-        edge5 = self.fc_edge5(x5)[..., :edge2.size(2), :edge2.size(3)]
-
-        logits = self.fc_edge6(torch.cat([edge1, edge2, edge3, edge4, edge5], dim=1))
-        # logits = resize_for_tensors(logits, x.size()[2:], align_corners=True)
-        
-        return logits
-class SANET_Model(Backbone):
-    def __init__(self, model_name, num_classes=21):
-        super().__init__(model_name, num_classes, mode='fix', segmentation=False)
-        
-
-        all_h_coords = np.arange(0, 32, 1)
-        all_w_coords = np.arange(0, 32, 1)
-        curr_pxl_coord = np.array(np.meshgrid(all_h_coords, all_w_coords, indexing='ij'))
-
-        self.coord_tensor = np.concatenate([curr_pxl_coord[1:2, :, :], curr_pxl_coord[:1, :, :]])
-
-        self.qcov=nn.Conv2d(2048+9+25, 1024, 3,padding=1, bias=False)
-        self.qcov2=nn.Conv2d(1024, 256, 3,padding=1, bias=False)
-
-        self.classifier = nn.Conv2d(256, num_classes, 1, bias=False)
-
-     
+        return    x5
     
+
+    def get_sp_cam(self,logits,deconv_para):
+        bg= upfeat(logits[:,0:1],deconv_para[:,:9],1,1)
+        fg= upfeat(logits[:,1:],deconv_para[:,9:],1,1)
+        logits =torch.cat([bg,fg],dim=1)
+        return logits
+
+    def DRM(self,probs,x5):
+        q=self.get_qfeats(probs) 
+        deconv_parameters = self.get_tran_conv_parms(torch.cat([x5.detach(),q],dim=1))
+        bg_para=get_noliner(F.softmax(deconv_parameters[:,:9],dim=1))#torch.sum(fg_aff).max()# fg_aff[0,:,10:20,10:20].detach().cpu().numpy()
+        fg_para=get_noliner(F.softmax(deconv_parameters[:,9:],dim=1))#torch.sum(aff22).min()
+        deconv_parameters= torch.cat([bg_para,fg_para],dim=1)
+        return  deconv_parameters
     def forward(self, inputs,probs):
         b,c,w,h=probs.shape
-
-        x = self.stage1(inputs)
-        x = self.stage2(x)
-        x = self.stage3(x)
-        x = self.stage4(x)
-        x = self.stage5(x)
-        
-
-        # all_XY_feat = (torch.from_numpy(
-        #     np.tile( self.coord_tensor, (inputs.shape[0], 1, 1, 1)).astype(np.float32)).cuda())
-        # xy22= upfeat(all_XY_feat,probs)
-        # xy22= F.interpolate(xy22,(32,32),mode='bilinear',align_corners=False)
-        # all_sum =torch.ones((b,1,w,h))
-        # all_sum = poolfeat(all_sum,probs)
-        feat_q = getpoolfeatsum(probs) #torch.sum(feat_q,dim=1)
-        _,aff_mat = refine_with_q(None,probs,with_aff=True)
-        x=self.qcov(torch.cat([x,feat_q,aff_mat],dim=1))
-        x = self.qcov(x)
-        logits = self.classifier(x)
-        # logits = resize_for_tensors(logits, inputs.size()[2:], align_corners=False)
-        
+        x5 =self.get_x5_features(inputs)
+        logits = self.classifier(x5)
+        deconv_parameters= self.DRM(probs,x5)
+        logits = self.get_sp_cam(logits,deconv_parameters)
         return logits
+   
+    def get_parameter_groups1(self, print_fn=print):
+        groups = ([], [], [], [],[],[],[],[])
+
+        for name, value in self.named_parameters():
+            # pretrained weights
+            if 'model' in name:
+                if 'weight' in name:
+                    # print_fn(f'pretrained weights : {name}')
+                    groups[0].append(value)
+                else:
+                    # print_fn(f'pretrained bias : {name}')
+                    groups[1].append(value)
+                    
+            # scracthed weights
+            else:
+                if('qfeats' in name ):
+                    if 'weight' in name:
+                        if print_fn is not None:
+                            print_fn(f'scratched weights : {name}')
+                        groups[4].append(value)
+                    else:
+                        if print_fn is not None:
+                            print_fn(f'scratched bias : {name}')
+                        groups[5].append(value)
+                elif('tran_conv' in name):
+                    if 'weight' in name:
+                        if print_fn is not None:
+                            print_fn(f'scratched weights : {name}')
+                        groups[6].append(value)
+                    else:
+                        if print_fn is not None:
+                            print_fn(f'scratched bias : {name}')
+                        groups[7].append(value)
+                else:
+                    if 'weight' in name:
+                        if print_fn is not None:
+                            print_fn(f'scratched weights : {name}')
+                        groups[2].append(value)
+                    else:
+                        if print_fn is not None:
+                            print_fn(f'scratched bias : {name}')
+                        groups[3].append(value)
+        return groups
+

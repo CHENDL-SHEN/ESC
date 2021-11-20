@@ -1,4 +1,0 @@
-{
-    "tag":{"_type": "choice", "_value": ["train_seg_for_ours","train_seg_for_full","train_seg_for_eps"]},
-    "backbone":{"_type": "choice", "_value": ["resnet101"]}
-}

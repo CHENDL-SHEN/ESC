@@ -204,197 +204,6 @@ def upfeat(input, prob, up_h=16, up_w=16):
 
     return feat_sum
 
-def getpoolfeatsum( prob, sp_h=16, sp_w=16):
-
-    prob_sum_list=[]
-    b, _, h, w = prob.shape 
-    h_shift_unit = 1
-    w_shift_unit = 1
-    p2d = (w_shift_unit, w_shift_unit, h_shift_unit, h_shift_unit)
-    feat_ =  torch.ones([b, 1, h, w]).cuda(prob.device)  # b* (n+1) *h*w
-    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 0, 1), kernel_size=(sp_h, sp_w),stride=(sp_h, sp_w)) # b * (n+1) * h* w
-    send_to_top_left =  F.pad(prob_feat, p2d, mode='constant', value=0)[:,  :, 2 * h_shift_unit:, 2 * w_shift_unit:]
-    prob_sum = send_to_top_left[:, -1:, :, :].clone()
-    prob_sum_list.append(prob_sum)
-    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 1, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
-    top = F.pad(prob_feat, p2d, mode='constant', value=0)[:,  :, 2 * h_shift_unit:, w_shift_unit:-w_shift_unit]
-    prob_sum = top[:, -1:, :, :].clone()
-    prob_sum_list.append(prob_sum)
-    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 2, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
-    top_right = F.pad(prob_feat, p2d, mode='constant', value=0)[:,  :, 2 * h_shift_unit:, :-2 * w_shift_unit]
-    prob_sum = top_right[:, -1:, :, :].clone()
-    prob_sum_list.append(prob_sum)
-    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 3, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
-    left = F.pad(prob_feat, p2d, mode='constant', value=0)[:,  :, h_shift_unit:-h_shift_unit, 2 * w_shift_unit:]
-    prob_sum = left[:, -1:, :, :].clone()
-    prob_sum_list.append(prob_sum)
-    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 4, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
-    center = F.pad(prob_feat, p2d, mode='constant', value=0)[:, :, h_shift_unit:-h_shift_unit, w_shift_unit:-w_shift_unit]
-    prob_sum = center[:, -1:, :, :].clone()
-    prob_sum_list.append(prob_sum)
-    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 5, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
-    right = F.pad(prob_feat, p2d, mode='constant', value=0)[:,  :, h_shift_unit:-h_shift_unit, :-2 * w_shift_unit]
-    prob_sum = right[:, -1:, :, :].clone()
-    prob_sum_list.append(prob_sum)
-    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 6, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
-    bottom_left = F.pad(prob_feat, p2d, mode='constant', value=0)[:,  :, :-2 * h_shift_unit, 2 * w_shift_unit:]
-    prob_sum = bottom_left[:, -1:, :, :].clone()
-    prob_sum_list.append(prob_sum)
-    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 7, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
-    bottom = F.pad(prob_feat, p2d, mode='constant', value=0)[:, :, :-2 * h_shift_unit, w_shift_unit:-w_shift_unit]
-    prob_sum = bottom[:, -1:, :, :].clone()
-    prob_sum_list.append(prob_sum)
-    prob_feat = F.avg_pool2d(feat_ * prob.narrow(1, 8, 1), kernel_size=(sp_h, sp_w), stride=(sp_h, sp_w))  # b * (n+1) * h* w
-    bottom_right = F.pad(prob_feat, p2d, mode='constant', value=0)[:, :, :-2 * h_shift_unit, :-2 * w_shift_unit]
-    prob_sum = bottom_right[:, -1:, :, :].clone()
-    prob_sum_list.append(prob_sum)
-
-    pooled_feat=torch.cat(prob_sum_list,dim=1)
-
-    return pooled_feat
-def sp_it(input,affmat):
-    b, c, h, w = input.shape
-
-    h_shift = 2
-    w_shift = 2
-
-    p2d = (w_shift, w_shift, h_shift, h_shift)
-    
-    feat_pd = F.pad(input, p2d, mode='constant', value=0)
-
-    feat_list=[]
-    for i in range(5):
-        for j in range(5):
-            cur_c= feat_pd[:,:,i:i+h,j:j+w]
-            feat_list.append(cur_c)
-    feat_all =torch.stack(feat_list,dim=2)
-    feat_add = feat_all *affmat.reshape(b,1,25,h,w)
-    feat_ret = torch.sum(feat_add,2)
-    return feat_ret
-# ================= - spixel related -=============
-def assign2uint8(assign):
-    #red up, green mid, blue down, for debug only
-    b,c,h,w = assign.shape
-
-    red = torch.cat([torch.ones(size=assign.shape),  torch.zeros(size=[b,2,h,w])],dim=1).cuda()
-
-    green = torch.cat([ torch.zeros(size=[b,1,h,w]),
-                      torch.ones(size=assign.shape),
-                      torch.zeros(size=[b,1,h,w])],dim=1).cuda()
-
-    blue  = torch.cat([torch.zeros(size=[b,2,h,w]),
-                       torch.ones(size=assign.shape)],dim=1).cuda()
-
-    black = torch.zeros(size=[b,3,h,w]).cuda()
-    white = torch.ones(size=[b,3,h,w]).cuda()
-    # up probablity
-    mat_vis = torch.where(assign.type(torch.float) < 0. , white, black)
-    mat_vis = torch.where(assign.type(torch.float) >= 0. , red* (assign.type(torch.float)+1)/3, mat_vis)
-    mat_vis = torch.where(assign.type(torch.float) >= 3., green*(assign.type(torch.float)-2)/3, mat_vis)
-    mat_vis = torch.where(assign.type(torch.float) >= 6., blue * (assign.type(torch.float) - 5.) / 3, mat_vis)
-
-    return (mat_vis * 255.).type(torch.uint8)
-
-def val2uint8(mat,maxVal):
-    maxVal_mat = torch.ones(mat.shape).cuda() * maxVal
-    mat_vis = torch.where(mat > maxVal_mat, maxVal_mat, mat)
-    return (mat_vis * 255. / maxVal).type(torch.uint8)
-
-
-def update_spixl_map (spixl_map_idx_in, assig_map_in):
-    assig_map = assig_map_in.clone()
-
-    b,_,h,w = assig_map.shape
-    _, _, id_h, id_w = spixl_map_idx_in.shape
-
-    if (id_h == h) and (id_w == w):
-        spixl_map_idx = spixl_map_idx_in
-    else:
-        spixl_map_idx = F.interpolate(spixl_map_idx_in, size=(h,w), mode='nearest')
-
-    assig_max,_ = torch.max(assig_map, dim=1, keepdim= True)
-    assignment_ = torch.where(assig_map == assig_max, torch.ones(assig_map.shape).cuda(),torch.zeros(assig_map.shape).cuda())
-    new_spixl_map_ = spixl_map_idx * assignment_ # winner take all
-    new_spixl_map = torch.sum(new_spixl_map_,dim=1,keepdim=True).type(torch.int)
-
-    return new_spixl_map
-
-
-def get_spixel_image(given_img, spix_index, n_spixels = 600, b_enforce_connect = False):
-
-    if not isinstance(given_img, np.ndarray):
-        given_img_np_ = given_img.detach().cpu().numpy().transpose(1,2,0)
-    else: # for cvt lab to rgb case
-        given_img_np_ = given_img
-
-    if not isinstance(spix_index, np.ndarray):
-        spix_index_np = spix_index.detach().cpu().numpy().transpose(0,1)
-    else:
-        spix_index_np = spix_index
-
-
-    h, w = spix_index_np.shape
-    given_img_np = cv2.resize(given_img_np_, dsize=(w, h), interpolation=cv2.INTER_CUBIC)
-
-    if b_enforce_connect:
-        spix_index_np = spix_index_np.astype(np.int64)
-        segment_size = (given_img_np_.shape[0] * given_img_np_.shape[1]) / (int(n_spixels) * 1.0)
-        min_size = int(0.06* segment_size)
-        max_size =  int(3 * segment_size)
-        spix_index_np = enforce_connectivity(spix_index_np[None, :, :], min_size, max_size)[0]
-    cur_max = np.max(given_img_np)
-    spixel_bd_image = mark_boundaries(given_img_np/cur_max, spix_index_np.astype(int), color = (0,1,1)) #cyna
-    return (cur_max*spixel_bd_image).astype(np.float32).transpose(2,0,1), spix_index_np #
-
-# ============ accumulate Q =============================
-def spixlIdx(args, b_train = False):
-    # code modified from ssn
-    if b_train:
-        n_spixl_h = int(np.floor(args.train_img_height / args.downsize))
-        n_spixl_w = int(np.floor(args.train_img_width / args.downsize))
-    else:
-        n_spixl_h = int(np.floor(args.input_img_height / args.downsize))
-        n_spixl_w = int(np.floor(args.input_img_width / args.downsize))
-
-    spix_values = np.int32(np.arange(0, n_spixl_w * n_spixl_h).reshape((n_spixl_h, n_spixl_w)))
-    spix_idx_tensor = shift9pos(spix_values)
-
-    torch_spix_idx_tensor = torch.from_numpy(
-        np.tile(spix_idx_tensor, (args.batch_size, 1, 1, 1))).type(torch.float).cuda()
-
-    return torch_spix_idx_tensor
-
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
-    def __repr__(self):
-        return '{:.3f} ({:.3f})'.format(self.val, self.avg)
-
-def batch2img(img):
-    b,_,h,w = img.shape
-    tmp = img.permute(0,2,3,1)
-    for i in range(b):
-        if i ==0:
-            tmp_stack = tmp[i,:,:,:]
-        else:
-            tmp_stack = torch.cat([tmp_stack,tmp[i,:,:,:]],dim=-2)
-    return  tmp_stack
-
 
 def build_LABXY_feat(label_in, XY_feat):
 
@@ -405,46 +214,6 @@ def build_LABXY_feat(label_in, XY_feat):
     LABXY_feat = torch.cat([scale_img, XY_feat],dim=1)
 
     return LABXY_feat
-
-
-def rgb2Lab_torch(img_in, mean_values = None):
-    # self implemented function that convert RGB image to LAB
-    # inpu img intense should be [0,1] float b*3*h*w
-    assert img_in.min() >= 0 and img_in.max()<=1
-
-    img= (img_in.clone() + mean_values.cuda()).clamp(0, 1)
-
-    mask = img > 0.04045
-    img[mask] = torch.pow((img[mask] + 0.055) / 1.055, 2.4)
-    img[~mask] /= 12.92
-
-    xyz_from_rgb = torch.tensor([[0.412453, 0.357580, 0.180423],
-                             [0.212671, 0.715160, 0.072169],
-                             [0.019334, 0.119193, 0.950227]]).cuda()
-    rgb = img.permute(0,2,3,1)
-
-    xyz_img = torch.matmul(rgb, xyz_from_rgb.transpose_(0,1))
-
-
-    xyz_ref_white = torch.tensor([0.95047, 1., 1.08883]).cuda()
-
-    # scale by CIE XYZ tristimulus values of the reference white point
-    lab = xyz_img / xyz_ref_white
-
-    # Nonlinear distortion and linear transformation
-    mask = lab > 0.008856
-    lab[mask] = torch.pow(lab[mask], 1. / 3.)
-    lab[~mask] = 7.787 * lab[~mask] + 16. / 116.
-
-    x, y, z = lab[..., 0:1], lab[..., 1:2], lab[..., 2:3]
-
-    # Vector scaling
-    L = (116. * y) - 16.
-    a = 500.0 * (x - y)
-    b = 200.0 * (y - z)
-
-    return torch.cat([L, a, b], dim=-1).permute(0,3,1,2)
-
 
 def label2one_hot_torch(labels, C=14):
     # w.r.t http://jacobkimmel.github.io/pytorch_onehot/
@@ -470,20 +239,8 @@ def label2one_hot_torch(labels, C=14):
 
     return target.type(torch.float32)
 
-def refine_with_q_old(input,prob,iter=20,down_size=16):
 
-    if(prob.shape[2]==input.shape[2]):
-        for i in range(iter):
-            input= poolfeat(input,prob,down_size,down_size)
-            input= upfeat(input,prob,down_size,down_size)
-    elif(prob.shape[2]==input.shape[2]*down_size):
-        for i in range(iter):
-            input= upfeat(input,prob,down_size,down_size)
-            input= poolfeat(input,prob,down_size,down_size)
-    else:
-        assert False, '尺寸不对'
-    return input
-def rewith_affmat(input,affmat):
+def refine_with_affmat(input,affmat):
     b, c, h, w = input.shape
 
     h_shift = 2
@@ -514,32 +271,39 @@ def get_turn(area=5):
 
     return torch.stack(turn_grid)
 
+def calc_affmat(psam,down_size=16):
 
-def refine_with_q(input,prob,iter=20,down_size=16,with_aff=False):
-    if(iter>0 or with_aff):
-        init_turn_grid=get_turn().reshape(1,25,5,5).cuda(prob.device)
-        b,c,h,w=prob.shape
-        ini_grid=torch.arange(0,25,1).reshape(1,1,5,5).cuda(prob.device)
+        init_turn_grid=get_turn().reshape(1,25,5,5).cuda(psam.device)
+        b,c,h,w=psam.shape
+        ini_grid=torch.arange(0,25,1).reshape(1,1,5,5).cuda(psam.device)
         ini_grid=label2one_hot_torch(ini_grid,25)
         ini_grid=ini_grid.repeat(b,1,int(h/(down_size*5))+1,int(w/(down_size*5))+1)[:,:,:int(h/down_size),:int(w/down_size)].detach()
 
         turn_grid=init_turn_grid.repeat(b,1,int(h/(down_size*5))+1,int(w/(down_size*5))+1)[:,:,:int(h/down_size),:int(w/down_size)]
 
-        up_ini_grid= upfeat(ini_grid,prob)
-        aff_grid = poolfeat(up_ini_grid,prob)  
+        up_ini_grid= upfeat(ini_grid,psam)
+        aff_grid = poolfeat(up_ini_grid,psam)  
         aff_mat = torch.gather(aff_grid,1,turn_grid)
+        
+        return aff_mat
+def refine_with_q(input,prob,iter=20,aff_mat= None,down_size=16,with_aff=False):
+    if(iter>0 or with_aff):
+        if(aff_mat==None):   
+            aff_mat = calc_affmat(prob)
         if(input==None): 
             return None,aff_mat
         if(iter>0):
             if(prob.shape[2]==input.shape[2]):
                 input= poolfeat(input,prob,down_size,down_size)
                 for i in range(iter-1):
-                    input= rewith_affmat(input,aff_mat)
+                    input= refine_with_affmat(input,aff_mat)
                 input = upfeat(input,prob)
             else:
                 for i in range(iter):
-                    input= rewith_affmat(input,aff_mat)
+                    input= refine_with_affmat(input,aff_mat)
         if(with_aff):
             return input,aff_mat
 
     return input
+
+

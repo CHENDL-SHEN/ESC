@@ -1,5 +1,6 @@
 import numpy as np
-
+from PIL import Image
+import imgviz
 def color_map(N = 256):
     def bitget(byteval, idx):
         return ((byteval & (1 << idx)) != 0)
@@ -42,4 +43,10 @@ def get_color_map_dic():
     
     return cmap_dic, cmap_image, labels
 
+
+def save_colored_mask(mask, save_path):
+    lbl_pil = Image.fromarray(mask.astype(np.uint8), mode="P")
+    colormap = imgviz.label_colormap()
+    lbl_pil.putpalette(colormap.flatten())
+    lbl_pil.save(save_path)
 

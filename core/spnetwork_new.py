@@ -15,12 +15,11 @@ from torchvision import models
 import torch.utils.model_zoo as model_zoo
 from torchvision.transforms.transforms import ToPILImage
 from .networks import Backbone
-from .arch_resnet import resnet
-from .arch_resnest import resnest
-from .abc_modules import ABC_Model
-from .deeplab_utils import ASPP, Decoder
-from .aff_utils import PathIndex
-from .puzzle_utils import tile_features, merge_features
+# from .arch_resnet import resnet
+# from .arch_resnest import resnest
+# from .abc_modules import ABC_Model
+# from .deeplab_utils import ASPP, Decoder
+# from .aff_utils import PathIndex
 from tools.ai.torch_utils import resize_for_tensors
 from tools.general.Q_util import *
 from core.models.model_util import conv
@@ -28,7 +27,7 @@ from core.models.model_util import conv
 #######################################################################
 # Normalization
 #######################################################################
-from .sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
+# from .sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 def conv_bn(batchNorm, in_planes, out_planes, kernel_size=3, stride=1):
     if batchNorm:
         return nn.Sequential(
