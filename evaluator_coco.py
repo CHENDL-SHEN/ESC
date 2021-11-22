@@ -36,15 +36,17 @@ import core.models as fcnmodel
 
 import dataset_root
 ###################################################################################
-
-
+start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+log_tag=create_directory(f'./experiments/logs/evalcoco/')
+log_path = log_tag+ f'/{start_time}.txt'
+log_func = lambda string='': log_print(string, log_path)
 class evaluator:
     def __init__(self, dataset='voc12',domain='train', SP_CAM=True, save_np_path=None,savepng_path=None,muti_scale=False,th_list=list(np.arange(0.2, 0.5, 0.1)),refine_list = range(0, 50, 10)) -> None:
         self.C_model = None
         self.Q_model = None
         self.SP_CAM = SP_CAM
         if(muti_scale):
-          self.scale_list = [0.5, 1, 1.5, 2.0, -0.5, -1, -1.5, -2.0]  # - is flip
+          self.scale_list = [0.5, 1, 1.5, 2.0]  # - is flip
         else:
           self.scale_list = [1.0]  # - is flip
             
@@ -124,22 +126,38 @@ class evaluator:
             affmat_list.append(calc_affmat(pred))
         return Q_list, affmat_list
 
-    def get_mutiscale_cam(self, cam_list, Q_list, affmat_list, refine_time=0):
-        _, _, h, w = Q_list[self.scale_list.index(1.0)].shape
+    def get_mutiscale_cam(self, cam_list, Q_list, affmat_list, masks,refine_time=0):
+        b, _, h, w = Q_list[self.scale_list.index(1.0)].shape
         refine_cam_list = []
+        index_list=[]
+        for i in range(masks.shape[1]):
+            if(masks[0][i]>0):
+               index_list.append(i)
+               if(len(index_list)>40):
+                   break
+            
         for cam, Q, affmat, s in zip(cam_list, Q_list, affmat_list, self.scale_list):
+                cam_index=torch.index_select(cam,1,torch.tensor(index_list).cuda())
                 if(self.SP_CAM):
-                    for i in range(refine_time):
-                        cam = refine_with_affmat(cam, affmat)
-                    cam = upfeat(cam, Q, 16, 16)
+                    with torch.no_grad():
+                        for i in range(refine_time):
+                            cam_index = refine_with_affmat(cam_index, affmat)
+                    cam = upfeat(cam_index, Q, 16, 16)
+                    torch.cuda.empty_cache()
 
                 cam = F.interpolate(cam, (int(h),int(w)), mode='bilinear', align_corners=False)
                 if(s <0):
                    cam = torch.flip(cam, dims=[3])#?dims 
                 refine_cam_list.append(cam)
-
+        ret = torch.ones([b, masks.shape[1], h, w ]).cuda()
         refine_cam = torch.sum(torch.stack(refine_cam_list),dim=0)
-        return refine_cam
+        
+        kk = 0
+        for i in range(masks.shape[1]):
+            if(masks[0][i]>0):
+               ret[0][i]=refine_cam[0][kk]
+               kk+=1
+        return ret
 
     def getbest_miou(self, clear=True):
         iou_list = []
@@ -169,7 +187,7 @@ class evaluator:
                     mask = tags.unsqueeze(2).unsqueeze(3).cuda()
 
                     for renum in self.refine_list:
-                        refine_cams = self.get_mutiscale_cam(cams_list, Qs,affmats,renum)
+                        refine_cams = self.get_mutiscale_cam(cams_list, Qs,affmats,mask,renum)
                         cams = (make_cam(refine_cams) * mask)
                         cams = F.interpolate(cams, (int(h),int(w)), mode='bilinear', align_corners=False)
                         if(self.save_np_path !=None):
@@ -193,10 +211,10 @@ class evaluator:
                                            os.mkdir(cur_save_path)
                                     img_path = os.path.join(cur_save_path,image_ids[batch_index]+'.png')
                                     save_colored_mask(pred_mask, img_path)
-
-                    sys.stdout.write(
-                        '\r# Evaluation [{}/{}] = {:.2f}%'.format(step + 1, length, (step + 1) / length * 100))
-                    sys.stdout.flush()
+                    log_func( '\r# Evaluation [{}/{}] = {:.2f}%'.format(step + 1, length, (step + 1) / length * 100))
+                    # sys.stdout.write(
+                    #    )
+                    # sys.stdout.flush()
 
             self.C_model.train()
             if(self.save_png_path!=None):
@@ -210,19 +228,24 @@ class evaluator:
 
             return ret
 if __name__ =="__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"] = "4"    
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"  
+    eval_domain='train800002'
+    log_func(str(os.environ["CUDA_VISIBLE_DEVICES"] ))
+    log_func(eval_domain)
     
-    model = SP_CAM_Model('resnest50', num_classes=20 + 1)
+      
+    model = SP_CAM_Model('resnest50', num_classes=80 + 1)
 
     model = model.cuda()
-    model.train()
-    model.load_state_dict(torch.load('experiments/models/train_sp_cam_VOC_32/2021-11-13 19:59:39.pth'))
+    model.eval()
+    model.load_state_dict(torch.load('experiments/models/train_sp_cam_COCO/2021-11-21 21:11:42.pth'))
     
     Q_model = fcnmodel.SpixelNet1l_bn().cuda()
-    Q_model.load_state_dict(torch.load('experiments/models/modelbest18.pth'))
     Q_model = nn.DataParallel(Q_model)
+    
+    Q_model.load_state_dict(torch.load('experiments/models/train_Q_coco/2021-11-2110:58:01.pth'))
     Q_model.eval()
     
-    evaluatorA = evaluator(dataset='voc12',domain='train',muti_scale=True, SP_CAM=True,savepng_path=None,refine_list=[30,40,50],th_list=[0.25,0.3,0.35])
+    evaluatorA = evaluator(dataset='coco',domain=eval_domain,muti_scale=True, SP_CAM=True,savepng_path='finalmodel/COCO/pseudo',refine_list=[30],th_list=[0.2])
     ret = evaluatorA.evaluate(model, Q_model)
     print(ret)

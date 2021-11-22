@@ -1,5 +1,0 @@
-{
-    "backbone":{"_type": "choice", "_value": ["resnest50","resnest101"]},
-    "fgORall":{"_type": "tag", "_value": ["resnest50","resnest101"]}
-
-}

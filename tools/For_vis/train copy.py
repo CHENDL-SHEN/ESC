@@ -47,7 +47,7 @@ import dataset_root
 
 #import evaluate
 #from tools.ai import evaluator
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"    
+os.environ["CUDA_VISIBLE_DEVICES"] = "5,7"    
 
 import nni
 
@@ -59,8 +59,8 @@ def get_params():
     ###############################################################################
     # Dataset
     ###############################################################################
-    parser.add_argument('--num_workers', default=8, type=int) 
-    parser.add_argument('--dataset', default='voc12', type=str, choices=['voc12', 'coco'])
+    parser.add_argument('--num_workers', default=8, type=int)
+    parser.add_argument('--dataset', default='coco', type=str, choices=['voc12', 'coco'])
     
     ###############################################################################
     # Network
@@ -87,18 +87,16 @@ def get_params():
     # others
     ###############################################################################
     parser.add_argument('--SP_CAM', default=True, type=str2bool)#***********改
-    parser.add_argument('--Qmodelpath', default='experiments/models/bestQ.pth', type=str)#
-    # parser.add_argument('--Qmodelpath', default='experiments/models/train_Q_coco/2021-11-2110:58:01.pth', type=str)#***********改
-    
+    parser.add_argument('--Qmodelpath', default='experiments/models/bestQ.pth', type=str)#***********改
     parser.add_argument('--print_ratio', default=0.1, type=float)
-    parser.add_argument('--tag', default='train_sp_cam_VOC_32', type=str)
+    parser.add_argument('--tag', default='pub_withq_lr_t', type=str)
 
     ###############################################################################
     ## parse for model fusion
     ###############################################################################
-    parser.add_argument('--drm_lr', default=10, type=int)
-    parser.add_argument('--drm_lr2', default=500, type=int)
-    
+    parser.add_argument('--lr2', default=100, type=int)
+    parser.add_argument('--lr3', default=400, type=int)
+    parser.add_argument('--fgORall', default=True, type=str2bool)
 
     args, _ = parser.parse_known_args()
     return args
@@ -145,10 +143,8 @@ def main(args):
         
         
     data_dir= dataset_root.VOC_ROOT if args["dataset"] == 'voc12' else dataset_root.COCO_ROOT
-    saliency_dir= dataset_root.VOC_SAL_ROOT if args["dataset"] == 'voc12' else dataset_root.COCO_SAL_ROOT
-    
     train_dataset = Dataset_with_SAL(
-        data_dir, saliency_dir ,domain,train_transform,_dataset=args["dataset"])
+        args["data_dir"], args["saliency_dir"] ,domain,train_transform,_dataset=args["dataset"])
     
     
     train_loader = DataLoader(train_dataset, batch_size=args["batch_size"], num_workers=args["num_workers"], shuffle=True, drop_last=True)
@@ -166,7 +162,13 @@ def main(args):
     log_func('[i] val_iteration : {:,}'.format(val_iteration))
     log_func('[i] max_iteration : {:,}'.format(max_iteration))
 
-
+    if(args['SP_CAM']):
+        Q_model = fcnmodel.SpixelNet1l_bn().cuda()
+        Q_model.load_state_dict(torch.load(args['Qmodelpath']))
+        Q_model = nn.DataParallel(Q_model)
+        Q_model.eval()
+    else:
+        Q_model=None
 
     ###################################################################################
     # Network
@@ -194,9 +196,9 @@ def main(args):
     
     val_domain = 'train' if args["dataset"]=='voc12'  else  'train_1000'
     if(args['SP_CAM']):
-        evaluatorA=evaluator.evaluator(args["dataset"],domain=val_domain ,SP_CAM=True,refine_list=[0,20])
+        evaluatorA=evaluator.evaluator(args["dataset"],domain=val_domain ,withQ=True,refine_list=[0,20])
     else:
-        evaluatorA=evaluator.evaluator(args["dataset"],domain=val_domain ,SP_CAM=False,refine_list=[0])
+        evaluatorA=evaluator.evaluator(args["dataset"],domain=val_domain ,withQ=False,refine_list=[0])
 
     
     
@@ -210,10 +212,10 @@ def main(args):
             {'params': param_groups[1], 'lr': 2*args["lr"], 'weight_decay': 0},
             {'params': param_groups[2], 'lr': 10*args["lr"], 'weight_decay': args["wd"]},
             {'params': param_groups[3], 'lr': 20*args["lr"], 'weight_decay': 0},
-            {'params': param_groups[4], 'lr': args["drm_lr"]*args["lr"], 'weight_decay': args["wd"]},
-            {'params': param_groups[5], 'lr': 2*args["drm_lr"]*args["lr"], 'weight_decay': 0},
-            {'params': param_groups[6], 'lr': args["drm_lr2"]*args["lr"], 'weight_decay': args["wd"]},
-            {'params': param_groups[7], 'lr': 2*args["drm_lr2"]*args["lr"], 'weight_decay': 0},
+            {'params': param_groups[4], 'lr': args["lr2"]*args["lr"], 'weight_decay': args["wd"]},
+            {'params': param_groups[5], 'lr': 2*args["lr2"]*args["lr"], 'weight_decay': 0},
+            {'params': param_groups[6], 'lr': args["lr2"]*args["lr"], 'weight_decay': args["wd"]},
+            {'params': param_groups[7], 'lr': 2*args["lr2"]*args["lr"], 'weight_decay': 0},
         ]
     else:
         param_groups = model.get_parameter_groups()
@@ -226,20 +228,7 @@ def main(args):
     optimizer = PolyOptimizer(params, lr=args["lr"], momentum=0.9, weight_decay=args["wd"], max_step=max_iteration, nesterov=args["nesterov"])
     if the_number_of_gpu > 1:
         log_func ('[i] the number of gpu : {}'.format(the_number_of_gpu))
-    model = nn.DataParallel(model)
-    if(args['SP_CAM']):
-        network_data = torch.load('/home/ders/home/ders/superpixel_fcn/pretrain_ckpt/SpixelNet_bsd_ckpt.tar')
-        Q_model = fcnmodel.SpixelNet1l_bn(data=network_data).cuda()
-        Q_model = nn.DataParallel(Q_model)
-        model_parmeters = torch.load(args['Qmodelpath'])
-        if('module.conv0a.1.weight' in model_parmeters.keys()):
-             Q_model.load_state_dict(model_parmeters)
-        else:
-            Q_model.module.load_state_dict(model_parmeters)
-        
-        Q_model.eval()
-    else:
-        Q_model=None
+        model = nn.DataParallel(model)
     lossfn=SP_CAM_Loss(args=args)
     lossfn = torch.nn.DataParallel(lossfn).cuda()
     #################################################################################################
@@ -285,7 +274,7 @@ def main(args):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        time.sleep(1000000)
+
 
         train_meter.add({
             'loss' : loss.item(), 

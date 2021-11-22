@@ -39,7 +39,7 @@ from datetime import datetime
 from nni.utils import merge_parameter
 import nni
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 import  core.models as fcnmodel
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
@@ -65,10 +65,10 @@ def get_params():
     ###############################################################################
     # Hyperparameter
     ###############################################################################
-    parser.add_argument('--batch_size', default=2, type=int)
-    parser.add_argument('--max_epoch', default=50, type=int) #***********调#@3
+    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--max_epoch', default=150, type=int) #***********调#@3
 
-    parser.add_argument('--lr', default=0.1, type=float) #***********调#@3
+    parser.add_argument('--lr', default=0.0005, type=float) #***********调#@3
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
 
@@ -81,14 +81,8 @@ def get_params():
     parser.add_argument('--th_step', default=0.5, type=float)#0.4,0.5,0.6
     parser.add_argument('--th_fg', default=0.05, type=float)#0.1,0.05,0.03
     parser.add_argument('--relu_t', default=0.75, type=float)#0.75,0.7,0.8
-    parser.add_argument('--K_same', default=1.01, type=float)#1,2,4,8
-    parser.add_argument('--K_diff', default=2.01, type=float)#1,2,4,8
-
-    parser.add_argument('--relu_diff', default=0, type=int) #0,1,2,4,8  
     parser.add_argument('--domain', default='train', type=str)#***********调#@2
     parser.add_argument('--pretrain', default=True, type=str2bool)#***********调#@4
-    # parser.add_argument('--pse_path', default='experiments/res/numpy101', type=str)#***********调#@5
-
     parser.add_argument('--tag', default='train_Q_coco', type=str)
 
     args = parser.parse_args()
@@ -155,7 +149,7 @@ class SetLoss(_Loss):
             same_loss= torch.sum(self.relufn(((affmat[:,12]-self.args.relu_t)*center_relu_map)))/b
             diff_loss=torch.sum(self.relufn(((torch.sum(affmat*diff_map,dim=1)))))/b
 
-            return loss_guip, same_loss*self.args.K_same,diff_loss*self.args.K_diff
+            return loss_guip, same_loss,2*diff_loss
             
 def main(args):
     tensorboard_dir = create_directory(f'./experiments/tensorboards/{args.tag}/{TIMESTAMP}/')   
@@ -206,18 +200,17 @@ def main(args):
 
     train_dataset = Dataset_with_SAL(
         args.data_dir, args['saliency_map_dir'],args.domain,train_transform,'coco')
-    valid_dataset = Dataset_For_Evaluation(args.data_dir, 'train', test_transform)
+    valid_dataset = Dataset_For_Evaluation(args.data_dir, 'train_1000', test_transform,'coco')
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=False, drop_last=True)
-    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=1, shuffle=False, drop_last=True)
+    valid_loader = DataLoader(valid_dataset, batch_size=16, num_workers=1, shuffle=False, drop_last=True)
     
     log_func('[i] mean values is {}'.format(imagenet_mean))
     log_func('[i] std values is {}'.format(imagenet_std))
     log_func('[i] train_transform is {}'.format(train_transform))
     log_func()
 
-    nn = 1
-    val_iteration =nn*len(train_loader)
+    val_iteration =1*len(train_loader)
     log_iteration = int(val_iteration * args.print_ratio)
     max_iteration = args.max_epoch * val_iteration
     
@@ -256,9 +249,9 @@ def main(args):
     except KeyError:
         use_gpu =0
     
-    if the_number_of_gpu > 1:
-        log_func('[i] the number of gpu : {}'.format(the_number_of_gpu))
-        model = nn.DataParallel(model)
+    # if the_number_of_gpu > 1:
+    #     log_func('[i] the number of gpu : {}'.format(the_number_of_gpu))
+    #     model = nn.DataParallel(model)
 
 
     load_model_fn = lambda: load_model(model, model_path, parallel=the_number_of_gpu > 1)
@@ -295,7 +288,7 @@ def main(args):
                 masks = masks.cuda()
                 inuptfeats=masks.clone()
                 inuptfeats[inuptfeats==255]=0 
-                inuptfeats=label2one_hot_torch(inuptfeats.unsqueeze(1), C=21)
+                inuptfeats=label2one_hot_torch(inuptfeats.unsqueeze(1), C=81)
                 inuptfeats=F.interpolate(inuptfeats.float(), size=(12,12),mode='bilinear', align_corners=False)
                 inuptfeats=F.interpolate(inuptfeats.float(), size=(w, h),mode='bilinear', align_corners=False)
                 prob = model(images)
@@ -335,7 +328,7 @@ def main(args):
         #################################################################################################
         # Inference
         #################################################################################################
-        prob = model(images)
+        prob = model(images.cuda())
 
         ###############################################################################
         # The part is to calculate losses.
@@ -374,6 +367,8 @@ def main(args):
         #################################################################################################
         # For Log
         #################################################################################################
+        # mIoU, _ = evaluate(valid_loader)
+        
         if (iteration + 1) % log_iteration == 0:
             loss,sem_loss,pos_loss, relu_loss= train_meter.get(clear=True)
             learning_rate = float(get_learning_rate_from_optimizer(optimizer))

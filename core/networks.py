@@ -146,7 +146,7 @@ class SP_CAM_Model(Backbone):
                         conv(True,ch_q*4,ch_q*4, 3, stride=2),
                         )
                 
-        self.get_tran_conv_parms=nn.Sequential(
+        self.get_tran_conv=nn.Sequential(
                 conv(False,ch_q*4+2048, int(1024),3),
                 conv(False,1024,256,3),
                 conv(False,256,128,3),
@@ -171,7 +171,7 @@ class SP_CAM_Model(Backbone):
 
     def DRM(self,probs,x5):
         q=self.get_qfeats(probs) 
-        deconv_parameters = self.get_tran_conv_parms(torch.cat([x5.detach(),q],dim=1))
+        deconv_parameters = self.get_tran_conv(torch.cat([x5.detach(),q],dim=1))
         bg_para=get_noliner(F.softmax(deconv_parameters[:,:9],dim=1))#torch.sum(fg_aff).max()# fg_aff[0,:,10:20,10:20].detach().cpu().numpy()
         fg_para=get_noliner(F.softmax(deconv_parameters[:,9:],dim=1))#torch.sum(aff22).min()
         deconv_parameters= torch.cat([bg_para,fg_para],dim=1)

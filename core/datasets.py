@@ -9,7 +9,8 @@ import imageio
 import numpy as np
 
 from PIL import Image
-
+from PIL import ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 from tools.ai.augment_utils import *
 from tools.ai.torch_utils import one_hot_embedding
 

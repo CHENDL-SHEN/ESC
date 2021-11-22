@@ -68,10 +68,8 @@ def calculate_mIoU(pred_mask, gt_mask):
     return miou * 100
 
 class Calculator_For_mIoU:
-    def __init__(self, json_path):
-        data = read_json(json_path)
-        self.class_names = ['background'] + data['class_names']
-        self.classes = len(self.class_names)
+    def __init__(self, class_num):
+        self.classes = class_num
 
         self.clear()
 
@@ -103,7 +101,7 @@ class Calculator_For_mIoU:
             self.T[i] += np.sum((gt_mask==i)*obj_mask)
             self.TP[i] += np.sum((gt_mask==i)*correct_mask)
 
-    def get(self, detail=False, clear=True):
+    def get(self, clear=True):
         IoU_dic = {}
         IoU_list = []
 
@@ -115,7 +113,6 @@ class Calculator_For_mIoU:
             FP = (self.P[i]-self.TP[i])/(self.T[i] + self.P[i] - self.TP[i] + 1e-10)
             FN = (self.T[i]-self.TP[i])/(self.T[i] + self.P[i] - self.TP[i] + 1e-10)
 
-            IoU_dic[self.class_names[i]] = IoU
 
             IoU_list.append(IoU)
             FP_list.append(FP)
@@ -130,10 +127,8 @@ class Calculator_For_mIoU:
         if clear:
             self.clear()
         
-        if detail:
-            return mIoU, mIoU_foreground, IoU_dic, FP, FN
-        else:
-            return mIoU, mIoU_foreground
+    
+        return mIoU, mIoU_foreground
 
     def clear(self):
         self.TP = []
