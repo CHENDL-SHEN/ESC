@@ -23,18 +23,18 @@ yields the new record of the mIoU metric in the weaklysupervised semantic segmen
 
 <br>
 
-# Prerequisite
+## Prerequisite
 - Python 3.6, PyTorch 1.8.0, and more in requirements.txt
-- CUDA 11.1, cuDNN 7.6.5
+- CUDA 11.1
 - 4 x  RTX 3090 GPUs
 
-# Usage
+## Usage
 
-## Install python dependencies
+### Install python dependencies
 ```bash
 python3 -m pip install -r requirements.txt
 ```
-### Dataset & pretrained model
+### Dataset Download
 - PASCAL VOC 2012
     - [Images](http://host.robots.ox.ac.uk/pascal/VOC/voc2012/) 
     - [Saliency maps]() 
@@ -47,4 +47,28 @@ python3 -m pip install -r requirements.txt
     - [Segmentation masks](https://drive.google.com/file/d/16wuPinx0rdIP_PO0uYeCn9rfX2-evc-S/view?usp=sharing)
 
 
+### Classification network  
+- Set the dataset root at ```dataset_root.py```.
+    ```python
+    # \dataset_root.py.
+    VOC_ROOT='VOC2012/VOCdevkit/VOC2012/'
+    VOC_SAL_ROOT='VOC2012/VOCdevkit/VOC2012/saliency_map/'
+    COCO_ROOT='COCO/'
+    COCO_SAL_ROOT = 'COCO/saliency_maps_poolnet/'
+- Execute the bash file for the three-stage training process.
+    ```bash
+    # Please see these files for the detail of execution.
 
+    bash scripts/train_all.sh
+- Also, the trained FCN model parameters is provided in this repo, you can skip the first two steps and execute the third step directly to generate SP-CAMs.
+    ```bash
+    # Please see these files for the detail of execution.
+
+    bash script/train_sp_cam.sh
+    
+### Segmentation network
+- We utilize [DeepLab-V2](https://arxiv.org/abs/1606.00915) 
+  for the segmentation network. 
+- Please see [deeplab-pytorch](https://github.com/kazuto1011/deeplab-pytorch) for the implementation in PyTorch.
+
+## Resluts
