@@ -44,7 +44,7 @@ import dataset_root
 
 #import evaluate
 #from tools.ai import evaluator
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"    
+os.environ["CUDA_VISIBLE_DEVICES"] = "1,5,6,7"    
 
 def get_params():
     parser = argparse.ArgumentParser()
@@ -60,7 +60,7 @@ def get_params():
     # Network
     ###############################################################################
     parser.add_argument('--backbone', default='resnest50', type=str)
-    parser.add_argument('--batch_size', default=8, type=int)
+    parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--max_epoch', default=12, type=int)#***********调
     parser.add_argument('--lr', default=0.01, type=float)#***********调
     parser.add_argument('--wd', default=4e-5, type=float)

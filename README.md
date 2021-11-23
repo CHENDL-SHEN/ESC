@@ -64,11 +64,15 @@ python3 -m pip install -r requirements.txt
     # Please see these files for the detail of execution.
 
     bash script/train_sp_cam.sh
-### final mdoel
-    
+
 ### Segmentation network
 - We utilize [DeepLab-V2](https://arxiv.org/abs/1606.00915) 
   for the segmentation network. 
 - Please see [deeplab-pytorch](https://github.com/kazuto1011/deeplab-pytorch) for the implementation in PyTorch.
-
+  
 ## Resluts
+### trained SP-CAM mdoel
+#### voc
+[best model (miou 79.10%)](https://drive.google.com/file/d/1mYTvFK-W7le_5Q-vdeiyyHZMkEYj1Q8H/view?usp=sharing)
+#### coco
+### segmentation mdoel
