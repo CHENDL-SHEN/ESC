@@ -31,7 +31,7 @@ class SP_CAM_Loss(_Loss):
                reduction='mean'):
     super(SP_CAM_Loss, self).__init__(size_average, reduce, reduction)
     self.args=args
-    self.fg_c_num =20 if  args['dataset'] == 'voc12' else 80
+    self.fg_c_num =20 if  args.dataset == 'voc12' else 80
     self.class_loss_fn = nn.CrossEntropyLoss().cuda()
   def forward(self,logits,prob,sailencys,labels):
       
@@ -41,7 +41,7 @@ class SP_CAM_Loss(_Loss):
         cls_loss = F.multilabel_soft_margin_loss(tagpred[:, 1:].view(tagpred.size(0), -1), labels[:,1:])
         #endregion
         #region sal_loss
-        if(self.args['SP_CAM']):
+        if(self.args.SP_CAM):
             sailencys = poolfeat(sailencys, prob, 16, 16).cuda()
         sailencys = F.interpolate(sailencys, size=(h, w))
         sailencys = F.interpolate(sailencys.float(), size=(h, w))
@@ -59,7 +59,7 @@ class SP_CAM_Loss(_Loss):
         iou_saliency = (torch.round(sal_pred[:, 1:].detach()) * torch.round(sailencys)).view(b,  self.fg_c_num , -1).sum(-1) / \
                     (torch.round(sal_pred[:, 1:].detach()) + 1e-04).view(b,  self.fg_c_num , -1).sum(-1)
 
-        valid_channel = (iou_saliency > self.args["tao"]).view(b,  self.fg_c_num , 1, 1).expand(size=(b,  self.fg_c_num , h, w))
+        valid_channel = (iou_saliency > self.args.tao).view(b,  self.fg_c_num , 1, 1).expand(size=(b,  self.fg_c_num , h, w))
         
         label_fg_valid = label_map & valid_channel
 

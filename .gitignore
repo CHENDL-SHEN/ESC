@@ -15,7 +15,11 @@ VOC2012
 nohup.out
 
 .vscode/launch.json
+<<<<<<< HEAD
 res/*
+=======
+res*
+>>>>>>> main
 res/figure_1*
 nohup_fjh.out
 finalmodel/*
