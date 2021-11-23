@@ -27,7 +27,7 @@ CUDA_VISIBLE_DEVICES=${GPU} python3 evaluator.py \
     --tag ${TAG}"_evaluater_sp_cam" \
     --curtime ${cur_time}\
     --sp_cam true\
-    --domain 'train' \  ## 'train_aug' 
+    --domain 'train' \
     --savepng true
 
 camnpy_path='./experiments/models/'${TAG}'_evaluater_sp_cam/'${cur_time}'/pseudo/'

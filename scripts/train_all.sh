@@ -21,8 +21,7 @@ echo $Cmodel_path
 CUDA_VISIBLE_DEVICES=${GPU} python3 evaluator.py \
     --Cmodel_path  $Cmodel_path\
     --dataset ${DATASET} \
-   
-    --domain 'train_aug'\     ## 'train' if coco
+    --domain 'train_aug'\
     --tag ${TAG}"_evaluater_cam" \
     --curtime ${cur_time}\
     --sp_cam false\
@@ -58,7 +57,7 @@ CUDA_VISIBLE_DEVICES=${GPU} python3 evaluator.py \
     --Cmodel_path  $Cmodel_path\
     --Qmodel_path  $Qmodel_path\
     --dataset ${DATASET} \
-    --domain 'train'\ ## 'train_aug' 
+    --domain 'train'\
     --tag ${TAG}"_evaluater_sp_cam" \
     --curtime ${cur_time}\
     --sp_cam true\
