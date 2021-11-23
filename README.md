@@ -74,4 +74,4 @@ python3 -m pip install -r requirements.txt
 #### voc
 [best model (miou 79.10%)](https://drive.google.com/file/d/1mYTvFK-W7le_5Q-vdeiyyHZMkEYj1Q8H/view?usp=sharing)
 #### coco
-### segmentation mdoel
+<!-- ### segmentation mdoel -->
