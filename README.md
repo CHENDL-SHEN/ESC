@@ -70,8 +70,9 @@ python3 -m pip install -r requirements.txt
 - Please see [deeplab-pytorch](https://github.com/kazuto1011/deeplab-pytorch) for the implementation in PyTorch.
   
 ## Resluts
-### trained SP-CAM mdoel
+### trained  checkpoints of SP-CAM mdoel
 #### voc
 [best model (miou 79.10%)](https://drive.google.com/file/d/1mYTvFK-W7le_5Q-vdeiyyHZMkEYj1Q8H/view?usp=sharing)
 #### coco
+ [ model (miou 48.37%)](https://drive.google.com/file/d/1YR_fxL8TNILKjE6gDK7a8wHIt--8g1qP/view?usp=sharing)
 <!-- ### segmentation mdoel -->
