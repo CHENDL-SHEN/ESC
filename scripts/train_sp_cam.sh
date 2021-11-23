@@ -5,7 +5,8 @@ echo $cur_time "logpath: ./experiments/logs/ "
 # Default setting
 DATASET=voc12
 
-Qmodel_path='./experiments/models/Q_model_trained.pth'
+Qmodel_path='./models_ckpt/Q_model_final.pth'
+
 
 # 4. train classification network for SP-CAM 
 CUDA_VISIBLE_DEVICES=${GPU} python3 train.py \
@@ -21,10 +22,12 @@ echo $Cmodel_path
 # 5. evaluate sp_cams and make pseudo labels
 CUDA_VISIBLE_DEVICES=${GPU} python3 evaluator.py \
     --Cmodel_path  $Cmodel_path\
+    --Qmodel_path  $Qmodel_path\
     --dataset ${DATASET} \
     --tag ${TAG}"_evaluater_sp_cam" \
     --curtime ${cur_time}\
     --sp_cam true\
+    --domain 'train' \  ## 'train_aug' 
     --savepng true
 
 camnpy_path='./experiments/models/'${TAG}'_evaluater_sp_cam/'${cur_time}'/pseudo/'

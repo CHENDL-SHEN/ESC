@@ -21,7 +21,8 @@ echo $Cmodel_path
 CUDA_VISIBLE_DEVICES=${GPU} python3 evaluator.py \
     --Cmodel_path  $Cmodel_path\
     --dataset ${DATASET} \
-    --domain 'train_aug' \ ## 'train' if coco
+   
+    --domain 'train_aug'\     ## 'train' if coco
     --tag ${TAG}"_evaluater_cam" \
     --curtime ${cur_time}\
     --sp_cam false\
@@ -55,8 +56,9 @@ echo $Cmodel_path
 # 5. evaluate sp_cams and make pseudo labels
 CUDA_VISIBLE_DEVICES=${GPU} python3 evaluator.py \
     --Cmodel_path  $Cmodel_path\
+    --Qmodel_path  $Qmodel_path\
     --dataset ${DATASET} \
-    --domain 'train'\
+    --domain 'train'\ ## 'train_aug' 
     --tag ${TAG}"_evaluater_sp_cam" \
     --curtime ${cur_time}\
     --sp_cam true\

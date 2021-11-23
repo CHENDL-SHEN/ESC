@@ -219,7 +219,7 @@ class evaluator:
                                     img_path = os.path.join(cur_save_path,image_ids[batch_index]+'.png')
                                     save_colored_mask(pred_mask, img_path)
 
-                    log_func('\r# Evaluation [{}/{}] = {:.2f}%'.format(step + 1, length, (step + 1) / length * 100))
+                    sys.stdout.write('\r# Evaluation [{}/{}] = {:.2f}%'.format(step + 1, length, (step + 1) / length * 100))
                     sys.stdout.flush()
             self.C_model.train()
             if(self.save_png_path!=None):

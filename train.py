@@ -209,12 +209,12 @@ def main(args):
     optimizer = PolyOptimizer(params, lr=args.lr, momentum=0.9, weight_decay=args.wd, max_step=max_iteration, nesterov=args.nesterov)
     if the_number_of_gpu > 1:
         log_func ('[i] the number of gpu : {}'.format(the_number_of_gpu))
-    model = nn.DataParallel(model)
+        model = nn.DataParallel(model)
     if(args.SP_CAM):
-        network_data = torch.load('/home/ders/home/ders/superpixel_fcn/pretrain_ckpt/SpixelNet_bsd_ckpt.tar')
-        Q_model = fcnmodel.SpixelNet1l_bn(data=network_data).cuda()
-        Q_model = nn.DataParallel(Q_model)
-        load_model_fn(Q_model,args.Qmodelpath)
+        Q_model = fcnmodel.SpixelNet1l_bn().cuda()
+        if the_number_of_gpu > 1:
+            Q_model = nn.DataParallel(Q_model)
+        load_model(Q_model, args.Qmodelpath, parallel=the_number_of_gpu > 1)
         Q_model.eval()
     else:
         Q_model=None
