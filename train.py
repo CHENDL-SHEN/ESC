@@ -2,8 +2,6 @@
 # author : Sanghyeon Jo <josanghyeokn@gmail.com>
 
 import os
-from pickle import FALSE
-import random
 import argparse
 from cv2 import LMEDS, Tonemap, log, polarToCart
 import numpy as np
@@ -16,7 +14,6 @@ import torch.nn.functional as F
 
 from torchvision import transforms
 from torch.utils.tensorboard import SummaryWriter
-from nni.utils import merge_parameter
 
 from torch.utils.data import DataLoader
 from imageio import imsave
@@ -47,13 +44,8 @@ import dataset_root
 
 #import evaluate
 #from tools.ai import evaluator
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"    
+os.environ["CUDA_VISIBLE_DEVICES"] = "1,5,6,7"    
 
-import nni
-
-TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
-
-start_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def get_params():
     parser = argparse.ArgumentParser()
     ###############################################################################
@@ -61,43 +53,34 @@ def get_params():
     ###############################################################################
     parser.add_argument('--num_workers', default=8, type=int) 
     parser.add_argument('--dataset', default='voc12', type=str, choices=['voc12', 'coco'])
-    
+    parser.add_argument('--image_size', default=512, type=int)
+    parser.add_argument('--min_image_size', default=320, type=int)
+    parser.add_argument('--max_image_size', default=640, type=int)
     ###############################################################################
     # Network
     ###############################################################################
     parser.add_argument('--backbone', default='resnest50', type=str)
-
-    ###############################################################################
-    # Hyperparameter
-    ###############################################################################
-    parser.add_argument('--batch_size', default=8, type=int)
+    parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--max_epoch', default=12, type=int)#***********调
-
     parser.add_argument('--lr', default=0.01, type=float)#***********调
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
-
-    parser.add_argument('--image_size', default=512, type=int)
-    parser.add_argument('--min_image_size', default=320, type=int)
-    parser.add_argument('--max_image_size', default=640, type=int)
-    parser.add_argument('--alpha', default=0.5, type=float)###keyitiao
+    ###############################################################################
+    # Hyperparameter
+    ###############################################################################
+    parser.add_argument('--alpha', default=0.5, type=float)#
     parser.add_argument('--tao', default=0.4, type=float)
-
+    parser.add_argument('--drm_lr', default=10, type=int)
+    parser.add_argument('--drm_lr2', default=500, type=int)
     ###############################################################################
     # others
     ###############################################################################
-    parser.add_argument('--SP_CAM', default=True, type=str2bool)#***********改
+    parser.add_argument('--SP_CAM', default=True, type=str2bool)#
     parser.add_argument('--Qmodelpath', default='experiments/models/bestQ.pth', type=str)#
-    # parser.add_argument('--Qmodelpath', default='experiments/models/train_Q_coco/2021-11-2110:58:01.pth', type=str)#***********改
-    
     parser.add_argument('--print_ratio', default=0.1, type=float)
     parser.add_argument('--tag', default='train_sp_cam_VOC_32', type=str)
+    parser.add_argument('--curtime', default='00', type=str)
 
-    ###############################################################################
-    ## parse for model fusion
-    ###############################################################################
-    parser.add_argument('--drm_lr', default=10, type=int)
-    parser.add_argument('--drm_lr2', default=500, type=int)
     
 
     args, _ = parser.parse_known_args()
@@ -110,17 +93,17 @@ def main(args):
     ###################################################################################
     # Arguments
     ###################################################################################
-    
-    tensorboard_dir = create_directory(f'./experiments/tensorboards/{args["tag"]}/{TIMESTAMP}/')   
-    log_tag=create_directory(f'./experiments/logs/{args["tag"]}/')
-    data_tag=create_directory(f'./experiments/data/{args["tag"]}/')
-    model_tag=create_directory(f'./experiments/models/{args["tag"]}/')
-    log_path = log_tag+ f'/{start_time}.txt'
-    data_path = data_tag + f'/{start_time}.json'
-    model_path = model_tag + f'/{start_time}.pth'
+    print(args.tag)
+    tensorboard_dir = create_directory(f'./experiments/tensorboards/{args.tag}/{args.curtime}/')   
+    log_tag=create_directory(f'./experiments/logs/{args.tag}/')
+    data_tag=create_directory(f'./experiments/data/{args.tag}/')
+    model_tag=create_directory(f'./experiments/models/{args.tag}/')
+    log_path = log_tag+ f'/{args.curtime}.txt'
+    data_path = data_tag + f'/{args.curtime}.json'
+    model_path = model_tag + f'/{args.curtime}.pth'
     
     log_func = lambda string='': log_print(string, log_path)
-    log_func('[i] {}'.format(args["tag"]))
+    log_func('[i] {}'.format(args.tag))
     log_func(str(args))
     ###################################################################################
     # Transform, Dataset, DataLoader
@@ -129,10 +112,10 @@ def main(args):
     imagenet_std = [0.229, 0.224, 0.225]
     
     train_transforms = [
-        RandomResize_For_Segmentation(args["min_image_size"], args["max_image_size"]),
+        RandomResize_For_Segmentation(args.min_image_size, args.max_image_size),
         RandomHorizontalFlip_For_Segmentation(),
         Normalize_For_Segmentation(imagenet_mean, imagenet_std),
-        RandomCrop_For_Segmentation(args["image_size"]),
+        RandomCrop_For_Segmentation(args.image_size),
     ]
     
     train_transform = transforms.Compose(train_transforms + [Transpose_For_Segmentation()])
@@ -140,18 +123,18 @@ def main(args):
 
     
     domain='train_aug'
-    if(args["dataset"]=='coco'):
+    if(args.dataset=='coco'):
          domain='train'
         
         
-    data_dir= dataset_root.VOC_ROOT if args["dataset"] == 'voc12' else dataset_root.COCO_ROOT
-    saliency_dir= dataset_root.VOC_SAL_ROOT if args["dataset"] == 'voc12' else dataset_root.COCO_SAL_ROOT
+    data_dir= dataset_root.VOC_ROOT if args.dataset == 'voc12' else dataset_root.COCO_ROOT
+    saliency_dir= dataset_root.VOC_SAL_ROOT if args.dataset == 'voc12' else dataset_root.COCO_SAL_ROOT
     
     train_dataset = Dataset_with_SAL(
-        data_dir, saliency_dir ,domain,train_transform,_dataset=args["dataset"])
+        data_dir, saliency_dir ,domain,train_transform,_dataset=args.dataset)
     
     
-    train_loader = DataLoader(train_dataset, batch_size=args["batch_size"], num_workers=args["num_workers"], shuffle=True, drop_last=True)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True, drop_last=True)
     
     log_func('[i] mean values is {}'.format(imagenet_mean))
     log_func('[i] std values is {}'.format(imagenet_std))
@@ -159,8 +142,8 @@ def main(args):
     
 
     val_iteration = int(len(train_loader))
-    log_iteration = int(val_iteration * args["print_ratio"])
-    max_iteration = args["max_epoch"] * val_iteration
+    log_iteration = int(val_iteration * args.print_ratio)
+    max_iteration = args.max_epoch * val_iteration
     
     log_func('[i] log_iteration : {:,}'.format(log_iteration))
     log_func('[i] val_iteration : {:,}'.format(val_iteration))
@@ -172,10 +155,10 @@ def main(args):
     # Network
     ###################################################################################
     
-    if(args['SP_CAM']):
-        model = SP_CAM_Model(args["backbone"], num_classes=21 if  args['dataset'] == 'voc12' else 81 )
+    if(args.SP_CAM):
+        model = SP_CAM_Model(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 )
     else:
-        model = CAM_Model(args["backbone"], num_classes=21 if  args['dataset'] == 'voc12' else 81 ,)
+        model = CAM_Model(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 ,)
     
     model = model.cuda()
     model.train()
@@ -192,46 +175,46 @@ def main(args):
     load_model_fn = lambda: load_model(model, model_path, parallel=the_number_of_gpu > 1)
     save_model_fn = lambda: save_model(model, model_path, parallel=the_number_of_gpu > 1)
     
-    val_domain = 'train' if args["dataset"]=='voc12'  else  'train_1000'
-    if(args['SP_CAM']):
-        evaluatorA=evaluator.evaluator(args["dataset"],domain=val_domain ,SP_CAM=True,refine_list=[0,20])
+    val_domain = 'train' if args.dataset=='voc12'  else  'train_1000'
+    if(args.SP_CAM):
+        evaluatorA=evaluator.evaluator(args.dataset,domain=val_domain ,SP_CAM=True,refine_list=[0,20])
     else:
-        evaluatorA=evaluator.evaluator(args["dataset"],domain=val_domain ,SP_CAM=False,refine_list=[0])
+        evaluatorA=evaluator.evaluator(args.dataset,domain=val_domain ,SP_CAM=False,refine_list=[0])
 
     
     
     ###################################################################################
     # Loss, Optimizer
     ###################################################################################
-    if(args["SP_CAM"]):
+    if(args.SP_CAM):
        param_groups = model.get_parameter_groups1()
        params = [
-            {'params': param_groups[0], 'lr': args["lr"], 'weight_decay': args["wd"]},
-            {'params': param_groups[1], 'lr': 2*args["lr"], 'weight_decay': 0},
-            {'params': param_groups[2], 'lr': 10*args["lr"], 'weight_decay': args["wd"]},
-            {'params': param_groups[3], 'lr': 20*args["lr"], 'weight_decay': 0},
-            {'params': param_groups[4], 'lr': args["drm_lr"]*args["lr"], 'weight_decay': args["wd"]},
-            {'params': param_groups[5], 'lr': 2*args["drm_lr"]*args["lr"], 'weight_decay': 0},
-            {'params': param_groups[6], 'lr': args["drm_lr2"]*args["lr"], 'weight_decay': args["wd"]},
-            {'params': param_groups[7], 'lr': 2*args["drm_lr2"]*args["lr"], 'weight_decay': 0},
+            {'params': param_groups[0], 'lr': args.lr, 'weight_decay': args.wd},
+            {'params': param_groups[1], 'lr': 2*args.lr, 'weight_decay': 0},
+            {'params': param_groups[2], 'lr': 10*args.lr, 'weight_decay': args.wd},
+            {'params': param_groups[3], 'lr': 20*args.lr, 'weight_decay': 0},
+            {'params': param_groups[4], 'lr': args.drm_lr*args.lr, 'weight_decay': args.wd},
+            {'params': param_groups[5], 'lr': 2*args.drm_lr*args.lr, 'weight_decay': 0},
+            {'params': param_groups[6], 'lr': args.drm_lr2*args.lr, 'weight_decay': args.wd},
+            {'params': param_groups[7], 'lr': 2*args.drm_lr2*args.lr, 'weight_decay': 0},
         ]
     else:
         param_groups = model.get_parameter_groups()
         params = [
-            {'params': param_groups[0], 'lr': args["lr"], 'weight_decay': args["wd"]},
-            {'params': param_groups[1], 'lr': 2*args["lr"], 'weight_decay': 0},
-            {'params': param_groups[2], 'lr': 10*args["lr"], 'weight_decay': args["wd"]},
-            {'params': param_groups[3], 'lr': 20*args["lr"], 'weight_decay': 0},
+            {'params': param_groups[0], 'lr': args.lr, 'weight_decay': args.wd},
+            {'params': param_groups[1], 'lr': 2*args.lr, 'weight_decay': 0},
+            {'params': param_groups[2], 'lr': 10*args.lr, 'weight_decay': args.wd},
+            {'params': param_groups[3], 'lr': 20*args.lr, 'weight_decay': 0},
           ]
-    optimizer = PolyOptimizer(params, lr=args["lr"], momentum=0.9, weight_decay=args["wd"], max_step=max_iteration, nesterov=args["nesterov"])
+    optimizer = PolyOptimizer(params, lr=args.lr, momentum=0.9, weight_decay=args.wd, max_step=max_iteration, nesterov=args.nesterov)
     if the_number_of_gpu > 1:
         log_func ('[i] the number of gpu : {}'.format(the_number_of_gpu))
     model = nn.DataParallel(model)
-    if(args['SP_CAM']):
+    if(args.SP_CAM):
         network_data = torch.load('/home/ders/home/ders/superpixel_fcn/pretrain_ckpt/SpixelNet_bsd_ckpt.tar')
         Q_model = fcnmodel.SpixelNet1l_bn(data=network_data).cuda()
         Q_model = nn.DataParallel(Q_model)
-        model_parmeters = torch.load(args['Qmodelpath'])
+        model_parmeters = torch.load(args.Qmodelpath)
         if('module.conv0a.1.weight' in model_parmeters.keys()):
              Q_model.load_state_dict(model_parmeters)
         else:
@@ -266,10 +249,10 @@ def main(args):
         labels = labels.cuda()
         sailencys = sailencys.cuda().view(sailencys.shape[0],1,sailencys.shape[1],sailencys.shape[2])/255.0
         prob=None
-        if(args['SP_CAM']):
+        if(args.SP_CAM):
             prob = Q_model(images)
 
-        if(args['SP_CAM']):
+        if(args.SP_CAM):
             logits = model(images,prob)
         else:
             logits = model(images)
@@ -278,14 +261,13 @@ def main(args):
         cls_loss=torch.mean(loss_list[0])
         sal_loss=torch.mean(loss_list[1])
 
-        loss= cls_loss+args["alpha"]*(sal_loss) 
+        loss= cls_loss+args.alpha*(sal_loss) 
 
         #################################################################################################
         
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        time.sleep(1000000)
 
         train_meter.add({
             'loss' : loss.item(), 
@@ -357,24 +339,15 @@ def main(args):
             writer.add_scalar('Evaluation/threshold', threshold, iteration)
             writer.add_scalar('Evaluation/mIoU', mIoU, iteration)
             writer.add_scalar('Evaluation/best_valid_mIoU', best_valid_mIoU, iteration)
-            nni.report_intermediate_result(mIoU)
-
-    nni.report_intermediate_result(best_valid_mIoU)
     
     write_json(data_path, data_dic)
     writer.close()
 
 if __name__ == '__main__':
-    try:
-        # get parameters form tuner
-        tuner_params = nni.get_next_parameter()
-        logger.debug(tuner_params)
-        params = vars(merge_parameter(get_params(), tuner_params))
-        print(params)
+    
+        params =get_params()
         main(params)
-    except Exception as exception:
-        logger.exception(exception)
-        raise
+
 
 
 

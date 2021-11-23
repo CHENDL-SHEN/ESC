@@ -35,8 +35,31 @@ from core.spnetwork_new import SANET_Model_new_base
 import core.models as fcnmodel
 
 import dataset_root
-###################################################################################
 
+parser = argparse.ArgumentParser()
+
+###################################################################################
+def get_params():
+    ###############################################################################
+    # Dataset
+    ###############################################################################
+    parser.add_argument('--dataset', default='voc12', type=str, choices=['voc12', 'coco'])
+
+    parser.add_argument(
+        '--Qmodel_path', default=None, type=str)  # 
+    parser.add_argument(
+        '--Cmodel_path', default='', type=str)  # 
+    
+    parser.add_argument('--savepng', default=False, type=str2bool)
+    parser.add_argument('--savenpy', default=False, type=str2bool)
+    
+    parser.add_argument('--sp_cam', default=False, type=str2bool)
+    
+    parser.add_argument('--tag', default='evaluate_', type=str)
+    parser.add_argument('--curtime', default='00', type=str)
+    
+    args = parser.parse_args()
+    return args
 
 class evaluator:
     def __init__(self, dataset='voc12',domain='train', SP_CAM=True, save_np_path=None,savepng_path=None,muti_scale=False,th_list=list(np.arange(0.2, 0.5, 0.1)),refine_list = range(0, 50, 10)) -> None:
@@ -194,10 +217,8 @@ class evaluator:
                                     img_path = os.path.join(cur_save_path,image_ids[batch_index]+'.png')
                                     save_colored_mask(pred_mask, img_path)
 
-                    sys.stdout.write(
-                        '\r# Evaluation [{}/{}] = {:.2f}%'.format(step + 1, length, (step + 1) / length * 100))
+                    log_func('\r# Evaluation [{}/{}] = {:.2f}%'.format(step + 1, length, (step + 1) / length * 100))
                     sys.stdout.flush()
-
             self.C_model.train()
             if(self.save_png_path!=None):
                 savetxt_path = os.path.join(self.save_png_path,"result.txt")
@@ -210,19 +231,44 @@ class evaluator:
 
             return ret
 if __name__ =="__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"] = "4"    
-    
-    model = SP_CAM_Model('resnest50', num_classes=20 + 1)
+    args =get_params()
 
+    log_tag = create_directory(f'./experiments/logs/{args.tag}/')
+    log_path = log_tag + f'/{args.curtime}.txt'
+    if( args.savepng or args.savenpy):
+        prediction_tag = create_directory(f'./experiments/predictions/{args.tag}/')
+        prediction_path =create_directory( prediction_tag + f'{args.curtime}/')
+    
+    
+    log_func = lambda string='': log_print(string, log_path)
+    log_func('[i] {}'.format(args.tag))
+    log_func(str(args))
+    
+    class_num =21 if args.dataset=='voc12' else 81
+    if(args.sp_cam):
+        model = SP_CAM_Model('resnest50', num_classes=class_num)
+    else:
+        model = CAM_Model('resnest50', num_classes=class_num)
+        
     model = model.cuda()
     model.train()
-    model.load_state_dict(torch.load('experiments/models/train_sp_cam_VOC_32/2021-11-13 19:59:39.pth'))
+    model.load_state_dict(torch.load(args.Cmodel_path))
     
-    Q_model = fcnmodel.SpixelNet1l_bn().cuda()
-    Q_model.load_state_dict(torch.load('experiments/models/modelbest18.pth'))
-    Q_model = nn.DataParallel(Q_model)
-    Q_model.eval()
+    if(args.sp_cam):
+        Q_model = fcnmodel.SpixelNet1l_bn().cuda()
+        Q_model.load_state_dict(torch.load(args.Qmodel_path))
+        Q_model = nn.DataParallel(Q_model)
+        Q_model.eval()
+    else:
+        Q_model=None
+    _savepng_path=None
+    _savenpy_path=None
+    if(args.savepng):
+        _savepng_path=create_directory(prediction_path+'pseudo/')
+    if(args.savenpy):
+        _savenpy_path=create_directory(prediction_path+'camnpy/')
+        
     
-    evaluatorA = evaluator(dataset='voc12',domain='train',muti_scale=True, SP_CAM=True,savepng_path=None,refine_list=[30,40,50],th_list=[0.25,0.3,0.35])
+    evaluatorA = evaluator(dataset='voc12',domain='train',muti_scale=True, SP_CAM=args.sp_cam,save_np_path=_savenpy_path,savepng_path=_savepng_path, refine_list=[0,20,30,40],th_list=[0.2,0.3,0.4])
     ret = evaluatorA.evaluate(model, Q_model)
-    print(ret)
+    log_func(ret)

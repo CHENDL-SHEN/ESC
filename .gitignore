@@ -13,11 +13,14 @@ CopyrightReceipt.pdf
 demo.py
 VOC2012
 nohup.out
-.gitignore
 
 .vscode/launch.json
-res*
-.gitignore
+res/*
 res/figure_1*
 nohup_fjh.out
 finalmodel/*
+
+nohup*
+tools/For_vis*
+COCO*
+data/*

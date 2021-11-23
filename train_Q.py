@@ -40,67 +40,53 @@ from tools.ai.evaluate_utils import *
 from tools.ai.augment_utils import *
 from tools.ai.randaugment import *
 from datetime import datetime
-from nni.utils import merge_parameter
-import nni
+
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,4"
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
 start_time = datetime.now().strftime('%Y-%m-%d%H:%M:%S')
 
-
 parser = argparse.ArgumentParser()
 
 
-class DottableDict(dict):
-  def __init__(self, *args, **kwargs):
-    dict.__init__(self, *args, **kwargs)
-    self.__dict__ = self
-
-  def allowDotting(self, state=True):
-    if state:
-      self.__dict__ = self
-    else:
-      self.__dict__ = dict()
 
 
 def get_params():
     ###############################################################################
     # Dataset
     ###############################################################################
+    parser.add_argument('--dataset', default='voc12', type=str, choices=['voc12', 'coco'])
     parser.add_argument('--num_workers', default=2, type=int)
+    parser.add_argument('--image_size', default=512, type=int)
+    parser.add_argument('--min_image_size', default=320, type=int)
+    parser.add_argument('--max_image_size', default=640, type=int)
+    parser.add_argument(
+        '--cam_npy_path', default='experiments/res/numpy101/', type=str)  # ***********调#@5
     ###############################################################################
     # Network
-    ###############################################################################
-    parser.add_argument('--backbone', default='resnest50', type=str)
-    ###############################################################################
-    # Hyperparameter
     ###############################################################################
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--max_epoch', default=150,
                         type=int)  # ***********调#@3
-
+    parser.add_argument(
+        '--pretrain', default='experiments/models/modelbest18.pth', type=str)  # ***********调#@4
+    parser.add_argument('--backbone', default='resnest50', type=str)
     parser.add_argument('--lr', default=0.0005, type=float)  # ***********调#@3
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
-
-    parser.add_argument('--image_size', default=512, type=int)
-    parser.add_argument('--min_image_size', default=320, type=int)
-    parser.add_argument('--max_image_size', default=640, type=int)
-    parser.add_argument('--downsize', default=16, type=int)
-    parser.add_argument('--print_ratio', default=0.1, type=float)
+    ###############################################################################
+    # Hyperparameter
+    ###############################################################################
     parser.add_argument('--th_bg', default=0.05, type=float)
     parser.add_argument('--th_step', default=0.5, type=float)
     parser.add_argument('--th_fg', default=0.05, type=float)
     parser.add_argument('--relu_t', default=0.75, type=float)
-
-    parser.add_argument('--dataset', default='voc12', type=str, choices=['voc12', 'coco'])
-    
-    parser.add_argument(
-        '--pretrain', default='experiments/models/modelbest18.pth', type=str)  # ***********调#@4
-    parser.add_argument(
-        '--cam_npy_path', default='experiments/res/numpy101/', type=str)  # ***********调#@5
-
+    ###############################################################################
+    # others
+    ###############################################################################
+    parser.add_argument('--print_ratio', default=0.1, type=float)
     parser.add_argument('--tag', default='train_Q_', type=str)
+    parser.add_argument('--curtime', default='00', type=str)
 
     args = parser.parse_args()
     return args
@@ -108,17 +94,18 @@ def get_params():
 
 def main(args):
     set_seed(0)
+    args =get_params()
 
     tensorboard_dir = create_directory(
-        f'./experiments/tensorboards/{args.tag}/{TIMESTAMP}/')
+        f'./experiments/tensorboards/{args.tag}/{args.curtime}/')
 
     log_tag = create_directory(f'./experiments/logs/{args.tag}/')
     data_tag = create_directory(f'./experiments/data/{args.tag}/')
     model_tag = create_directory(f'./experiments/models/{args.tag}/')
 
-    log_path = log_tag + f'/{start_time}.txt'
-    data_path = data_tag + f'/{start_time}.json'
-    model_path = model_tag + f'/{start_time}.pth'
+    log_path = log_tag + f'/{args.curtime}.txt'
+    data_path = data_tag + f'/{args.curtime}.json'
+    model_path = model_tag + f'/{args.curtime}.pth'
 
     log_func = lambda string='': log_print(string, log_path)
 
@@ -384,8 +371,8 @@ def main(args):
 
             data = {
                 'iteration': iteration + 1,
-                'mIoU': mIoU,
-                'best_valid_mIoU': best_valid_mIoU,
+                'GT_reconstruct_mIoU': mIoU,
+                'best_valid_GTremIoU': best_valid_mIoU,
                 'time': eval_timer.tok(clear=True),
             }
             data_dic['validation'].append(data)
@@ -393,17 +380,14 @@ def main(args):
 
             log_func('[i] \
                 iteration={iteration:,}, \
-                mIoU={mIoU:.2f}%, \
-                best_valid_mIoU={best_valid_mIoU:.2f}%, \
+                GT_reconstruct_mIoU={mIoU:.2f}%, \
+                best_valid_GTremIoU={best_valid_mIoU:.2f}%, \
                 time={time:.0f}sec'.format(**data)
                      )
 
             writer.add_scalar('Evaluation/mIoU', mIoU, iteration)
             writer.add_scalar('Evaluation/best_valid_mIoU',
                               best_valid_mIoU, iteration)
-            nni.report_intermediate_result(mIoU)
-
-    nni.report_intermediate_result(best_valid_mIoU)
     write_json(data_path, data_dic)
     writer.close()
 
@@ -411,14 +395,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    try:
-        # get parameters form tuner
-        tuner_params = nni.get_next_parameter()
-        logger.debug(tuner_params)
-        params = vars(merge_parameter(get_params(), tuner_params))
-        print(params)
-        params = DottableDict(params)
-        main(params)
-    except Exception as exception:
-        logger.exception(exception)
-        raise
+
+    params = get_params()
+    main(params)
+
