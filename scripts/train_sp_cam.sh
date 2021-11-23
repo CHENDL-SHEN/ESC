@@ -5,7 +5,7 @@ echo $cur_time
 # Default setting
 DATASET=voc12
 
-Qmodel_path='./experiments/models/bestQ.pth'
+Qmodel_path='./experiments/models/Q_model_trained.pth'
 
 # 4. train classification network for SP-CAM 
 CUDA_VISIBLE_DEVICES=${GPU} python3 train.py \

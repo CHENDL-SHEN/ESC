@@ -3,13 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 from skimage.segmentation import mark_boundaries
 import cv2
-
 import sys
-
-import torchvision
-sys.path.append('./third_party/cython')
-from connectivity import enforce_connectivity
-    
 init_turn_grid =None
 
 def compute_semantic_pos_loss(prob_in, labxy_feat,  pos_weight = 0.003,  kernel_size=16):
