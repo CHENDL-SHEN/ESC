@@ -176,7 +176,7 @@ class Dataset_For_trainQ_withcam(Base_Dataset):
         self.scale_list = [0.5, 1, 1.5, 2.0, -0.5, -1, -1.5, -2.0]  # - is flip
 
     def __getitem__(self, index):
-        image, image_id, tags = super().__getitem__(index)
+        image, image_id, label = super().__getitem__(index)
         size = image.size
         sal_mask = Image.open(self.sal_dir + image_id + '.png').convert('L')
         cam = np.load(os.path.join(self.pse_dir, image_id+'.npy'))[0].transpose(1,2,0)
@@ -189,9 +189,7 @@ class Dataset_For_trainQ_withcam(Base_Dataset):
             cam=output_dic['cam'].transpose(2,0,1)# cv2.imwrite('1.png',cam[0]*255)
                 #cv2.imwrite('1.png',output_dic['image'][0]*255)
            
-        label = one_hot_embedding(
-            [self.class_dic[tag]+1 for tag in tags], self.classes+1)
-        label[0] = 1
+
         return image, image_id, label, sal_mask,cam
 
 

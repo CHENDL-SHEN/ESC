@@ -2,7 +2,7 @@
 GPU=0,2
 TAG="voc_all"
 cur_time=$(date "+%Y-%m-%d_%H:%M:%S")
-echo $cur_time
+echo $cur_time "logpath: ./experiments/logs/ "
 DATASET=voc12
 
 
@@ -21,6 +21,7 @@ echo $Cmodel_path
 CUDA_VISIBLE_DEVICES=${GPU} python3 evaluator.py \
     --Cmodel_path  $Cmodel_path\
     --dataset ${DATASET} \
+    --domain 'train_aug' \ ## 'train' if coco
     --tag ${TAG}"_evaluater_cam" \
     --curtime ${cur_time}\
     --sp_cam false\
@@ -45,7 +46,7 @@ CUDA_VISIBLE_DEVICES=${GPU} python3 train.py \
     --dataset ${DATASET} \
     --tag ${TAG}"_train_sp_cam" \
     --batch_size 32\
-    --curtime ${cur_time}
+    --curtime ${cur_time}\
     --SP_CAM  true\
     --Qmodel_path  $Qmodel_path\
 
@@ -55,6 +56,7 @@ echo $Cmodel_path
 CUDA_VISIBLE_DEVICES=${GPU} python3 evaluator.py \
     --Cmodel_path  $Cmodel_path\
     --dataset ${DATASET} \
+    --domain 'train'\
     --tag ${TAG}"_evaluater_sp_cam" \
     --curtime ${cur_time}\
     --sp_cam true\

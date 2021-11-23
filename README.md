@@ -46,8 +46,8 @@ python3 -m pip install -r requirements.txt
     - [Segmentation masks](https://drive.google.com/file/d/16wuPinx0rdIP_PO0uYeCn9rfX2-evc-S/view?usp=sharing)
 
 
-### Classification network  
-- Set the dataset root at ```dataset_root.py```.
+### Pseudo Labels Generation network  
+- Set the datasets root at ```dataset_root.py```.
     ```python
     # \dataset_root.py.
     VOC_ROOT='VOC2012/VOCdevkit/VOC2012/'
@@ -64,7 +64,6 @@ python3 -m pip install -r requirements.txt
     # Please see these files for the detail of execution.
 
     bash script/train_sp_cam.sh
-
 ### Segmentation network
 - We utilize [DeepLab-V2](https://arxiv.org/abs/1606.00915) 
   for the segmentation network. 

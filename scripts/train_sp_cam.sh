@@ -1,7 +1,7 @@
 GPU=0,2
 TAG="voc_sp_cam"
 cur_time=$(date "+%Y-%m-%d_%H:%M:%S")
-echo $cur_time
+echo $cur_time "logpath: ./experiments/logs/ "
 # Default setting
 DATASET=voc12
 
@@ -14,7 +14,7 @@ CUDA_VISIBLE_DEVICES=${GPU} python3 train.py \
     --batch_size 32\
     --curtime ${cur_time}\
     --SP_CAM  true\
-    --Qmodel_path  $Qmodel_path
+    --Qmodelpath  $Qmodel_path
 
 Cmodel_path='./experiments/models/'${TAG}'_train_sp_cam/'${cur_time}'.pth'
 echo $Cmodel_path

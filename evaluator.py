@@ -44,6 +44,8 @@ def get_params():
     # Dataset
     ###############################################################################
     parser.add_argument('--dataset', default='voc12', type=str, choices=['voc12', 'coco'])
+    parser.add_argument('--domain', default='train', type=str)
+    
 
     parser.add_argument(
         '--Qmodel_path', default=None, type=str)  # 
@@ -269,6 +271,6 @@ if __name__ =="__main__":
         _savenpy_path=create_directory(prediction_path+'camnpy/')
         
     
-    evaluatorA = evaluator(dataset='voc12',domain='train',muti_scale=True, SP_CAM=args.sp_cam,save_np_path=_savenpy_path,savepng_path=_savepng_path, refine_list=[0,20,30,40],th_list=[0.2,0.3,0.4])
+    evaluatorA = evaluator(dataset='voc12',domain=args.domain,muti_scale=True, SP_CAM=args.sp_cam,save_np_path=_savenpy_path,savepng_path=_savepng_path, refine_list=[0,20,30,40],th_list=[0.2,0.3,0.4])
     ret = evaluatorA.evaluate(model, Q_model)
     log_func(ret)

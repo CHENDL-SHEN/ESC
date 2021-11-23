@@ -42,7 +42,6 @@ from tools.ai.randaugment import *
 from datetime import datetime
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,4"
 TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S/}".format(datetime.now())
 start_time = datetime.now().strftime('%Y-%m-%d%H:%M:%S')
 
@@ -69,7 +68,7 @@ def get_params():
     parser.add_argument('--max_epoch', default=150,
                         type=int)  # ***********调#@3
     parser.add_argument(
-        '--pretrain', default='models_ckpt/Q_model_pretrained.tar', type=str)  # ***********调#@4
+        '--pretrain', default='/media/ders/fengjinhao/superpixel_fcn-master/pretrain_ckpt/SpixelNet_bsd_ckpt.tar', type=str)  # ***********调#@4
     parser.add_argument('--backbone', default='resnest50', type=str)
     parser.add_argument('--lr', default=0.0005, type=float)  # ***********调#@3
     parser.add_argument('--wd', default=4e-5, type=float)
@@ -87,6 +86,8 @@ def get_params():
     parser.add_argument('--print_ratio', default=0.1, type=float)
     parser.add_argument('--tag', default='train_Q_', type=str)
     parser.add_argument('--curtime', default='00', type=str)
+    parser.add_argument('--downsize', default=16, type=int)
+    
 
     args = parser.parse_args()
     return args
@@ -94,7 +95,6 @@ def get_params():
 
 def main(args):
     set_seed(0)
-    args =get_params()
 
     tensorboard_dir = create_directory(
         f'./experiments/tensorboards/{args.tag}/{args.curtime}/')
@@ -150,7 +150,7 @@ def main(args):
     train_dataset = Dataset_For_trainQ_withcam(
         data_dir, saliency_dir, args.cam_npy_path, train_domain, train_transform, args.dataset)
     valid_dataset = Dataset_For_Evaluation(
-        args.data_dir, test_domain, test_transform)
+        data_dir, test_domain, test_transform)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
                               num_workers=args.num_workers, shuffle=False, drop_last=True)
@@ -191,7 +191,6 @@ def main(args):
     # model = model.cuda()
     model.train()
 
-    log_func('[i] Architecture is {}'.format(args.architecture))
     log_func('[i] Total Params: %.2fM' % (calculate_parameters(model)))
     log_func()
 
@@ -204,7 +203,6 @@ def main(args):
 
     if the_number_of_gpu > 1:
         log_func('[i] the number of gpu : {}'.format(the_number_of_gpu))
-        model = nn.DataParallel(model)
 
         # for sync bn
         # patch_replication_callback(model)
@@ -285,6 +283,7 @@ def main(args):
     for iteration in range(max_iteration):
         images, imgids, tags, sailencys, cams = train_iterator.get()
         tags = tags.cuda()
+        images=images.cuda()
         #################################################################################################
         # Inference
         #################################################################################################
@@ -310,7 +309,10 @@ def main(args):
         same_loss = torch.mean(reloss[1])
         diff_loss = torch.mean(reloss[2])
 
-        loss = loss_s + same_loss+diff_loss
+        if(iteration>0.7*max_iteration):
+            loss = loss_s + same_loss+diff_loss
+        else:
+            loss = loss_s
         #################################################################################################
 
         optimizer.zero_grad()

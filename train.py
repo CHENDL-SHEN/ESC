@@ -44,7 +44,7 @@ import dataset_root
 
 #import evaluate
 #from tools.ai import evaluator
-os.environ["CUDA_VISIBLE_DEVICES"] = "1,5,6,7"    
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1,5,6,7"    
 
 def get_params():
     parser = argparse.ArgumentParser()
@@ -214,12 +214,7 @@ def main(args):
         network_data = torch.load('/home/ders/home/ders/superpixel_fcn/pretrain_ckpt/SpixelNet_bsd_ckpt.tar')
         Q_model = fcnmodel.SpixelNet1l_bn(data=network_data).cuda()
         Q_model = nn.DataParallel(Q_model)
-        model_parmeters = torch.load(args.Qmodelpath)
-        if('module.conv0a.1.weight' in model_parmeters.keys()):
-             Q_model.load_state_dict(model_parmeters)
-        else:
-            Q_model.module.load_state_dict(model_parmeters)
-        
+        load_model_fn(Q_model,args.Qmodelpath)
         Q_model.eval()
     else:
         Q_model=None
