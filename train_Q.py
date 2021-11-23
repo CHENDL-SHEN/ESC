@@ -69,7 +69,7 @@ def get_params():
     parser.add_argument('--max_epoch', default=150,
                         type=int)  # ***********调#@3
     parser.add_argument(
-        '--pretrain', default='experiments/models/modelbest18.pth', type=str)  # ***********调#@4
+        '--pretrain', default='trained/Q_model_pretrained.tar', type=str)  # ***********调#@4
     parser.add_argument('--backbone', default='resnest50', type=str)
     parser.add_argument('--lr', default=0.0005, type=float)  # ***********调#@3
     parser.add_argument('--wd', default=4e-5, type=float)
@@ -174,11 +174,11 @@ def main(args):
     ###################################################################################
     # Network
     ###################################################################################
-    network_data = torch.load(
-        '/home/ders/home/ders/superpixel_fcn/pretrain_ckpt/SpixelNet_bsd_ckpt.tar')
-    model = fcnmodel.SpixelNet1l_bn(data=network_data).cuda()
-    if('.pth' in args.pretrain):
-        model.load_state_dict(torch.load(args.pretrain))
+
+    if(args.pretrain!=''):
+        network_data = torch.load(
+            args.pretrain)
+        model = fcnmodel.SpixelNet1l_bn(data=network_data).cuda()
 
     model = torch.nn.DataParallel(model).cuda()
 

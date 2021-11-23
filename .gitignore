@@ -1,7 +1,5 @@
 
-!*Q_model_trained.pth
-
-experiments/
+experiments/*
 
 __pycache__/
 
@@ -11,7 +9,6 @@ results_*/
 
 *.tgz
 
-CopyrightReceipt.pdf
 demo.py
 VOC2012
 nohup.out

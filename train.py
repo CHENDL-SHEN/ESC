@@ -76,7 +76,7 @@ def get_params():
     # others
     ###############################################################################
     parser.add_argument('--SP_CAM', default=True, type=str2bool)#
-    parser.add_argument('--Qmodelpath', default='experiments/models/Q_model_trained.pth', type=str)#
+    parser.add_argument('--Qmodelpath', default='trained/Q_model_final.pth', type=str)#
     parser.add_argument('--print_ratio', default=0.1, type=float)
     parser.add_argument('--tag', default='train_sp_cam_VOC_32', type=str)
     parser.add_argument('--curtime', default='00', type=str)
