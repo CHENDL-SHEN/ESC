@@ -21,3 +21,6 @@ res*
 res/figure_1*
 nohup_fjh.out
 finalmodel/*
+
+nohup*
+tools/For_vis
