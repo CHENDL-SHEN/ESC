@@ -23,4 +23,6 @@ nohup_fjh.out
 finalmodel/*
 
 nohup*
-tools/For_vis
+tools/For_vis*
+COCO/*
+data/*
