@@ -1,5 +1,7 @@
+
+!*Q_model_trained.pth
+
 experiments/
-!*/Q_model_trained.pth
 
 __pycache__/
 
