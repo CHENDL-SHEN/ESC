@@ -37,13 +37,13 @@ python3 -m pip install -r requirements.txt
 ### Dataset Download
 - PASCAL VOC 2012
     - [Images](http://host.robots.ox.ac.uk/pascal/VOC/voc2012/) 
-    - [Saliency maps]() 
-      using [PoolNet](https://arxiv.org/pdf/1904.09569v1.pdf)
+    - [Saliency maps]() ##our html
+      using [PoolNet]
 
 - MS-COCO 2014
     - [Images](https://cocodataset.org/#home) 
-    - [Saliency maps]() 
-      using [PoolNet](https://arxiv.org/pdf/1904.09569v1.pdf)
+    - [Saliency maps]()  
+      using [PoolNet] ##our html
     - [Segmentation masks](https://drive.google.com/file/d/16wuPinx0rdIP_PO0uYeCn9rfX2-evc-S/view?usp=sharing)
 
 
