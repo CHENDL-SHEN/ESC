@@ -12,9 +12,9 @@ CUDA_VISIBLE_DEVICES=${GPU} python3 train.py \
     --dataset ${DATASET} \
     --tag ${TAG}"_train_sp_cam" \
     --batch_size 32\
-    --curtime ${cur_time}
+    --curtime ${cur_time}\
     --SP_CAM  true\
-    --Qmodel_path  $Qmodel_path\
+    --Qmodel_path  $Qmodel_path
 
 Cmodel_path='./experiments/models/'${TAG}'_train_sp_cam/'${cur_time}'.pth'
 echo $Cmodel_path
