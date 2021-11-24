@@ -273,4 +273,4 @@ if __name__ =="__main__":
     
     evaluatorA = evaluator(dataset='voc12',domain=args.domain,muti_scale=True, SP_CAM=args.sp_cam,save_np_path=_savenpy_path,savepng_path=_savepng_path, refine_list=[0,20,30,40],th_list=[0.2,0.3,0.4])
     ret = evaluatorA.evaluate(model, Q_model)
-    log_func(ret)
+    log_func(str(ret))

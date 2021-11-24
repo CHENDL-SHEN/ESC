@@ -46,7 +46,9 @@ class Base_Dataset(torch.utils.data.Dataset):
         self.root_dir = root_dir
         if(_dataset=="voc12"):
             self.image_dir = self.root_dir + 'JPEGImages/'
-            self.mask_dir = self.root_dir + 'SegmentationClass/'
+            self.mask_dir = self.root_dir + 'SegmentationClassAug/'
+            assert os.path.exists(self.mask_dir), 'please the Voc Aug masks into'+self.mask_dir 
+
         elif(_dataset=="coco"):
             if('train' in domain):
                 self.image_dir = self.root_dir + 'train2014/'
