@@ -1,4 +1,4 @@
-GPU=0,2
+GPU=2,3
 TAG="voc_sp_cam"
 cur_time=$(date "+%Y-%m-%d_%H:%M:%S")
 echo $cur_time "logpath: ./experiments/logs/ "

@@ -4,20 +4,10 @@
 
 
 ## Abstract
-Weakly supervised semantic segmentation (WSSS) using
-only image-level labels can significantly reduce annotation
-costs and attract considerable research attention. Most
-advanced WSSS methods exploit the class activation maps
-(CAMs) to generate pseudo labels for training the segmentation network. However, the low-resolution CAMs often
-lead to low-quality pseudo labels. To overcome this challenge, we propose a novel WSSS framework, in which the
-superpixel level class activation map (SP-CAM) is introduced to obtain the explicit pseudo labels. Firstly, the
-FCN network with the improved loss is used to generate the
-pixel-superpixel association map (PSAM) and the adjacent
-superpixel affinity matrix (ASAM). Secondly, a deconvolution reconstruction module (DRM) is devised to approximate SP-CAMs. Finally, SP-CAMs are revised by our postprocessing schemes combining with the ASAM diffusion and
-PSAM upsampling, leading to more explicit pseudo labels.
-Experimental results on PASCAL VOC 2012 dataset demonstrate the effectiveness of the proposed method, which
-yields the new record of the mIoU metric in the weaklysupervised semantic segmentation. 
-
+Weakly supervised semantic segmentation (WSSS) using only image-level labels can significantly reduce the annotation cost and thus has attracted considerable research attention in recent years. Most advanced WSSS methods use the class activation maps (CAMs) to generate pseudo labels for training a segmentation network.
+However, the low-resolution CAMs often lead to low-quality pseudo labels. To overcome this limitation, this paper proposes a novel WSSS framework, where a superpixel-level class activation map (SP-CAM) is introduced to obtain explicit pseudo labels. 
+First, the fully convolutional  network with an improved loss is used to generate the pixel-superpixel association map (PSAM) and the adjacent superpixel affinity matrix (ASAM). Then, a deconvolution reconstruction module  is developed to approximate SP-CAMs. Finally, the SP-CAMs are revised by the proposed post-processing schemes combined with the superpixel-based random walk and PSAM upsampling, thus obtaining more explicit pseudo labels. 
+Extensive experiments demonstrate the high effectiveness of the proposed method, which achieves the new state-of-the-art performance on both PASCAL VOC 2012 and MS COCO 2014 datasets.
 ## Overview
 ![Overall architecture](./figures/process.png)
 
@@ -72,7 +62,7 @@ python3 -m pip install -r requirements.txt
 ## Resluts
 ### trained  checkpoints of SP-CAM mdoel
 #### voc
-[best model (miou 79.10%)](https://drive.google.com/file/d/1mYTvFK-W7le_5Q-vdeiyyHZMkEYj1Q8H/view?usp=sharing)
+[best model (mIou 79.10%)](https://drive.google.com/file/d/1mYTvFK-W7le_5Q-vdeiyyHZMkEYj1Q8H/view?usp=sharing)
 #### coco
- [ model (miou 48.37%)](https://drive.google.com/file/d/1YR_fxL8TNILKjE6gDK7a8wHIt--8g1qP/view?usp=sharing)
+ [ model (mIou 48.37%)](https://drive.google.com/file/d/1YR_fxL8TNILKjE6gDK7a8wHIt--8g1qP/view?usp=sharing)
 <!-- ### segmentation mdoel -->

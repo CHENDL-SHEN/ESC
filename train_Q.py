@@ -60,17 +60,17 @@ def get_params():
     parser.add_argument('--min_image_size', default=320, type=int)
     parser.add_argument('--max_image_size', default=640, type=int)
     parser.add_argument(
-        '--cam_npy_path', default='experiments/res/numpy101/', type=str)  # ***********调#@5
+        '--cam_npy_path', default='experiments/res/numpy101/', type=str)  
     ###############################################################################
     # Network
     ###############################################################################
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--max_epoch', default=150,
-                        type=int)  # ***********调#@3
+                        type=int)  
     parser.add_argument(
-        '--pretrain', default='models_ckpt/SpixelNet_bsd_ckpt.tar', type=str)  # ***********调#@4
+        '--pretrain', default='models_ckpt/SpixelNet_bsd_ckpt.tar', type=str)  
     parser.add_argument('--backbone', default='resnest50', type=str)
-    parser.add_argument('--lr', default=0.0005, type=float)  # ***********调#@3
+    parser.add_argument('--lr', default=0.0005, type=float)  
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
     ###############################################################################
@@ -302,15 +302,15 @@ def main(args):
 
         # label_1hot = label2one_hot_torch(labels, C=2) # set C=50 as SSN does
         LABXY_feat_tensor = build_LABXY_feat(
-            label_1hot, XY_feat_stack)  # B* (50+2 )* H * W
+        label_1hot, XY_feat_stack)  # B* (50+2 )* H * W
 
         reloss = Qlossfn(prob, LABXY_feat_tensor, cams, imgids)
         loss_s = torch.mean(reloss[0])
-        same_loss = torch.mean(reloss[1])
+        press_loss = torch.mean(reloss[1])
         diff_loss = torch.mean(reloss[2])
 
         if(iteration>0.7*max_iteration):
-            loss = loss_s + same_loss+diff_loss
+            loss = loss_s + press_loss+diff_loss
         else:
             loss = loss_s
         #################################################################################################
@@ -382,7 +382,7 @@ def main(args):
 
             log_func('[i] \
                 iteration={iteration:,}, \
-                GT_reconstruct_mIoU={mIoU:.2f}%, \
+                GT_reconstruct_mIoU={GT_reconstruct_mIoU:.2f}%, \
                 best_valid_GTremIoU={best_valid_mIoU:.2f}%, \
                 time={time:.0f}sec'.format(**data)
                      )

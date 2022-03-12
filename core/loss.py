@@ -107,8 +107,8 @@ class QLoss(_Loss):
             cur_masks_1hot_dw=poolfeat(cams,prob)
             cams_bg=cur_masks_1hot_dw.clone()
             cams_fg=cur_masks_1hot_dw.clone()
-            cams_bg[:,0]=self.args.th_bg#predictions.max()
-            cams_fg[:,0]=self.args.th_bg+self.args.th_step#predictions.max()
+            cams_bg[:,0]=self.args.th_bg
+            cams_fg[:,0]=self.args.th_bg+self.args.th_step
             predictions1=torch.argmax(cams_bg,dim=1)
             predictions2=torch.argmax(cams_fg,dim=1)
             fgsort = torch.sort(cur_masks_1hot_dw[:,1:],1,True)[0]
@@ -141,8 +141,8 @@ class QLoss(_Loss):
             diff_map=torch.stack(diff_map_list,dim=1).detach()
             center_relu_map= (torch.sum(sam_map,dim=1)>15)#diff_map.sum()/8
             affmat=calc_affmat(prob)
-            same_loss= torch.sum(self.relufn(((affmat[:,12]-self.args.relu_t)*center_relu_map)))/b
+            press_loss= torch.sum(self.relufn(((affmat[:,12]-self.args.relu_t)*center_relu_map)))/b
             diff_loss=torch.sum(self.relufn(((torch.sum(affmat*diff_map,dim=1)))))/b
 
-            return loss_guip, same_loss,2*diff_loss
+            return loss_guip, press_loss,2*diff_loss
     
