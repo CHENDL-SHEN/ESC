@@ -71,7 +71,7 @@ def get_params():
     parser.add_argument('--alpha', default=0.5, type=float)#
     parser.add_argument('--tao', default=0.4, type=float)
     parser.add_argument('--drm_lr', default=10, type=int)
-    parser.add_argument('--drm_lr2', default=10, type=int)
+    parser.add_argument('--drm_lr2', default=500, type=int)
     ###############################################################################
     # others
     ###############################################################################
