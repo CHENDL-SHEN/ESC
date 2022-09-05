@@ -2,6 +2,8 @@
 # author : Sanghyeon Jo <josanghyeokn@gmail.com>
 
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"    
+
 import argparse
 from cv2 import LMEDS, Tonemap, log, polarToCart
 import numpy as np
@@ -44,7 +46,6 @@ import dataset_root
 
 #import evaluate
 #from tools.ai import evaluator
-# os.environ["CUDA_VISIBLE_DEVICES"] = "1,5,6,7"    
 
 def get_params():
     parser = argparse.ArgumentParser()
@@ -53,22 +54,22 @@ def get_params():
     ###############################################################################
     parser.add_argument('--num_workers', default=8, type=int) 
     parser.add_argument('--dataset', default='voc12', type=str, choices=['voc12', 'coco'])
-    parser.add_argument('--image_size', default=512, type=int)
+    parser.add_argument('--image_size', default=480, type=int)
     parser.add_argument('--min_image_size', default=320, type=int)
     parser.add_argument('--max_image_size', default=640, type=int)
     ###############################################################################
     # Network
     ###############################################################################
-    parser.add_argument('--backbone', default='resnest50', type=str)
-    parser.add_argument('--batch_size', default=16, type=int)
-    parser.add_argument('--max_epoch', default=12, type=int)#***********调
-    parser.add_argument('--lr', default=0.01, type=float)#***********调
+    parser.add_argument('--backbone', default='resnet50', type=str)
+    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--max_epoch', default=15, type=int)#***********调
+    parser.add_argument('--lr', default=0.1, type=float)#***********调
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
     ###############################################################################
     # Hyperparameter
     ###############################################################################
-    parser.add_argument('--alpha', default=0.5, type=float)#
+    parser.add_argument('--alpha', default=1, type=float)#
     parser.add_argument('--tao', default=0.4, type=float)
     parser.add_argument('--drm_lr', default=10, type=int)
     parser.add_argument('--drm_lr2', default=500, type=int)
@@ -76,9 +77,11 @@ def get_params():
     # others
     ###############################################################################
     parser.add_argument('--SP_CAM', default=True, type=str2bool)#
-    parser.add_argument('--Qmodelpath', default='models_ckpt/Q_model_final.pth', type=str)#
+    # parser.add_argument('--Qmodelpath', default='models_ckpt/Q_model_final.pth', type=str)#
+    
+    parser.add_argument('--Qmodelpath', default='experiments/models/train_Q_oriimg_lab/2022-09-04 11:41:44.pth', type=str)#
     parser.add_argument('--print_ratio', default=0.1, type=float)
-    parser.add_argument('--tag', default='train_sp_cam_VOC_32', type=str)
+    parser.add_argument('--tag', default='train_sp_cam_VOC_tile', type=str)
     parser.add_argument('--curtime', default='00', type=str)
 
     
@@ -93,6 +96,8 @@ def main(args):
     ###################################################################################
     # Arguments
     ###################################################################################
+    time_string =  time.strftime("%Y-%m-%d %H:%M:%S")
+    args.curtime=time_string
     print(args.tag)
     tensorboard_dir = create_directory(f'./experiments/tensorboards/{args.tag}/{args.curtime}/')   
     log_tag=create_directory(f'./experiments/logs/{args.tag}/')
@@ -129,7 +134,7 @@ def main(args):
         
     data_dir= dataset_root.VOC_ROOT if args.dataset == 'voc12' else dataset_root.COCO_ROOT
     saliency_dir= dataset_root.VOC_SAL_ROOT if args.dataset == 'voc12' else dataset_root.COCO_SAL_ROOT
-    
+    # saliency_dir = "/media/ders/zhangyumin/SPML/VOCdevkit/VOC2012/hed/"
     train_dataset = Dataset_with_SAL(
         data_dir, saliency_dir ,domain,train_transform,_dataset=args.dataset)
     
@@ -175,9 +180,9 @@ def main(args):
     load_model_fn = lambda: load_model(model, model_path, parallel=the_number_of_gpu > 1)
     save_model_fn = lambda: save_model(model, model_path, parallel=the_number_of_gpu > 1)
     
-    val_domain = 'train' if args.dataset=='voc12'  else  'train_1000'
+    val_domain = 'train_600' if args.dataset=='voc12'  else  'train_1000'
     if(args.SP_CAM):
-        evaluatorA=evaluator.evaluator(args.dataset,domain=val_domain ,SP_CAM=True,refine_list=[0,20])
+        evaluatorA=evaluator.evaluator(args.dataset,domain=val_domain ,SP_CAM=True,refine_list=[0])
     else:
         evaluatorA=evaluator.evaluator(args.dataset,domain=val_domain ,SP_CAM=False,refine_list=[0])
 
@@ -211,10 +216,15 @@ def main(args):
         log_func ('[i] the number of gpu : {}'.format(the_number_of_gpu))
         model = nn.DataParallel(model)
     if(args.SP_CAM):
+        network_data = torch.load(
+            "models_ckpt/SpixelNet_bsd_ckpt.tar")
+        Q_model = fcnmodel.SpixelNet1l_bn(data=network_data).cuda()
         Q_model = fcnmodel.SpixelNet1l_bn().cuda()
         if the_number_of_gpu > 1:
             Q_model = nn.DataParallel(Q_model)
-        load_model(Q_model, args.Qmodelpath, parallel=the_number_of_gpu > 1)
+        
+        load_model(Q_model, args.Qmodelpath, parallel=the_number_of_gpu > 2)
+
         Q_model.eval()
     else:
         Q_model=None
@@ -242,19 +252,46 @@ def main(args):
         images, imgids,labels,sailencys= train_iterator.get()
         images = images.cuda()
         labels = labels.cuda()
+        # sailencys = sailencys.cuda()
         sailencys = sailencys.cuda().view(sailencys.shape[0],1,sailencys.shape[1],sailencys.shape[2])/255.0
         prob=None
+        
+
         if(args.SP_CAM):
             prob = Q_model(images)
 
         if(args.SP_CAM):
-            logits = model(images,prob)
+            logits,x4 = model(images,prob)
         else:
-            logits = model(images)
+            logits,x4 = model(images)
 
-        loss_list=lossfn(logits,prob,sailencys,labels)
-        cls_loss=torch.mean(loss_list[0])
-        sal_loss=torch.mean(loss_list[1])
+        b,c,h,w=logits.shape
+        imgmin_mask= F.interpolate(images.float(),size=(h,w) )
+        imgmin_mask= imgmin_mask.float().sum(dim=1,keepdim=True)!=0
+        # x4_min=poolfeat(x4,prob)
+        images_min=poolfeat(images,prob)
+        b, c, h, w = logits.size()
+        tagpred = F.avg_pool2d(logits, kernel_size=(h, w), padding=0)#
+        cls_loss = F.multilabel_soft_margin_loss(tagpred[:, 1:].view(tagpred.size(0), -1), labels[:,1:])
+        
+        mask=labels[:,:].unsqueeze(2).unsqueeze(3).cuda()
+        fg_cam=make_cam(logits[:,1:])*mask[:,1:]
+        if(sailencys.shape[1]==1):
+              sailencys = poolfeat(sailencys, prob, 16, 16).cuda()
+              sailencys =torch.cat([sailencys,1-sailencys],dim=1)
+              
+              
+        # pooll=nn.AvgPool2d(4,stride=4)
+        # prob=pooll(prob)
+  
+        
+        x4 = poolfeat(images, prob, 16,16).cuda()
+        
+        target_feat=x4.detach()*imgmin_mask
+        target_feat_tile=tile_features(target_feat,6)
+        fg_cam_tile=tile_features(fg_cam,6)
+        
+        sal_loss=lossfn(fg_cam_tile,target_feat_tile).mean()
 
         loss= cls_loss+args.alpha*(sal_loss) 
 
@@ -274,7 +311,7 @@ def main(args):
         # For Log
         #################################################################################################
         if (iteration + 1) % log_iteration == 0:
-            loss,sal_loss,cls_loss = train_meter.get(clear=True)
+            loss,cls_loss,sal_loss = train_meter.get(clear=True)
             learning_rate = float(get_learning_rate_from_optimizer(optimizer))
             
             data = {

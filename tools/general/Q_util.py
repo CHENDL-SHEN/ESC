@@ -5,7 +5,33 @@ from skimage.segmentation import mark_boundaries
 import cv2
 import sys
 init_turn_grid =None
+import math
+# import pytorch_colors as colors
+def tile_features(features, num_pieces):
+    _, _, h, w = features.size()
 
+    num_pieces_per_line = int(math.sqrt(num_pieces))
+    
+    h_per_patch = h // num_pieces_per_line
+    w_per_patch = w // num_pieces_per_line
+    
+    """
+    +-----+-----+
+    |  1  |  2  |
+    +-----+-----+
+    |  3  |  4  |
+    +-----+-----+
+
+    +-----+-----+-----+-----+
+    |  1  |  2  |  3  |  4  |
+    +-----+-----+-----+-----+
+    """
+    patches = []
+    for splitted_features in torch.split(features, h_per_patch, dim=2):
+        for patch in torch.split(splitted_features, w_per_patch, dim=3):
+            patches.append(patch)
+    
+    return torch.cat(patches, dim=0)
 def compute_semantic_pos_loss(prob_in, labxy_feat,  pos_weight = 0.003,  kernel_size=16):
     # this wrt the slic paper who used sqrt of (mse)
 
@@ -23,16 +49,23 @@ def compute_semantic_pos_loss(prob_in, labxy_feat,  pos_weight = 0.003,  kernel_
     reconstr_feat = upfeat(pooled_labxy, prob, kernel_size, kernel_size)
 
     loss_map = reconstr_feat[:,-2:,:,:] - labxy_feat[:,-2:,:,:]
-
-    # self def cross entropy  -- the official one combined softmax
-    logit = torch.log(reconstr_feat[:, :-2, :, :] + 1e-8)
-    loss_sem = - torch.sum(logit * labxy_feat[:, :-2, :, :]) / b
+    if(False):
+        loss_map_sem = reconstr_feat[:, :-2, :, :] - labxy_feat[:, :-2, :, :]
+        loss_sem =  torch.norm(loss_map_sem, p=2, dim=1).sum() / (b * S)
+    else:
+        # self def cross entropy  -- the official one combined softmax
+        logit = torch.log(reconstr_feat[:, :-2, :, :] + 1e-8)
+        loss_sem = - torch.sum(logit * labxy_feat[:, :-2, :, :]) / b    
+        
+  
+    
     loss_pos = torch.norm(loss_map, p=2, dim=1).sum() / b * m / S
 
     # empirically we find timing 0.005 tend to better performance
-    loss_sum =  0.005 * (loss_sem + loss_pos)
-    loss_sem_sum =  0.005 * loss_sem
+    loss_sem_sum =   0.005 * loss_sem
     loss_pos_sum = 0.005 * loss_pos
+    loss_sum =   loss_pos_sum +loss_sem_sum
+
 
     return loss_sum, loss_sem_sum,  loss_pos_sum
 
@@ -300,4 +333,17 @@ def refine_with_q(input,prob,iter=20,aff_mat= None,down_size=16,with_aff=False):
 
     return input
 
-
+def pool_feat_2(probs,feats):
+    b,cp,h,w=probs.shape
+    b,cf,h,w=feats.shape
+    probs=probs.view(b,cp,h*w).transpose(1,2)
+    probs_sum=torch.sum(probs,dim=1,keepdim=True)
+    feats=feats.view(b,cf,h*w)
+    ret=torch.bmm(feats,probs)/(probs_sum+1e-5)
+    return ret
+def up_feat_2(probs,feats_min):
+    b,cp,h,w=probs.shape
+    b,cf,cp=feats_min.shape
+    probs=probs.view(b,cp,h*w)
+    ret=torch.bmm(feats_min,probs).view(b,cf,h,w)
+    return ret

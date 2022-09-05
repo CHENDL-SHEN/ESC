@@ -101,7 +101,7 @@ class Calculator_For_mIoU:
             self.T[i] += np.sum((gt_mask==i)*obj_mask)
             self.TP[i] += np.sum((gt_mask==i)*correct_mask)
 
-    def get(self, clear=True):
+    def get(self, clear=True,detail=False):
         IoU_dic = {}
         IoU_list = []
 
@@ -127,7 +127,10 @@ class Calculator_For_mIoU:
         if clear:
             self.clear()
         
-    
+        if detail:
+            return mIoU, mIoU_foreground, IoU_list, FP, FN
+        else:
+            return mIoU, mIoU_foreground
         return mIoU, mIoU_foreground
 
     def clear(self):

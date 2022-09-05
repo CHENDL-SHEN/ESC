@@ -268,10 +268,13 @@ class RandomCrop:
             return cropped_image
 
 class RandomCrop_For_Segmentation(RandomCrop):
-    def __init__(self, crop_size):
+    def __init__(self, crop_size,shape_dim=1):
         super().__init__(crop_size)
-
-        self.crop_shape_for_mask = (self.crop_size, self.crop_size)
+        if(shape_dim==1):
+            self.crop_shape_for_mask = (self.crop_size, self.crop_size)
+        else:
+            self.crop_shape_for_mask = (self.crop_size, self.crop_size,shape_dim)
+            
 
     def __call__(self, data):
         image, mask = data['image'], data['mask']

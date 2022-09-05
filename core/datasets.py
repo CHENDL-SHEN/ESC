@@ -161,6 +161,38 @@ class Dataset_with_SAL(Base_Dataset):
         return image, image_id, label, sal_mask
 
 
+class Dataset_with_LABIMG(Base_Dataset):
+    def __init__(self, root_dir, pse_dir, domain, transform=None,_dataset='voc12'):
+        super().__init__(_dataset,root_dir, domain, with_id=True, with_tags=True)
+        self.transform = transform
+        self.pse_dir = pse_dir
+        cmap_dic, _, class_names = get_color_map_dic()
+        self.colors = np.asarray([cmap_dic[class_name]
+                                 for class_name in class_names])
+
+        data = read_json('./data/VOC_2012.json')
+        self.class_dic = data['class_dic']
+        self.classes = data['classes']
+
+    def __getitem__(self, index):
+        image, image_id, label = super().__getitem__(index)
+        size = image.size
+        # oriimg = cv2.imread(self.pse_dir + image_id + '.jpg')
+        # oriimg=cv2.cvtColor(oriimg,cv2.COLOR_BGR2LAB)
+        oriimg=Image.open(self.pse_dir + image_id + '.jpg').convert('RGB')
+        if self.transform is not None:
+            input_dic = {'image':image, 'mask':oriimg}
+            output_dic = self.transform(input_dic)
+            image = output_dic['image']
+
+            sal_mask = output_dic['mask']
+            # cv2.imread(self.pse_dir + image_id + '.jpg')
+            sal_mask=cv2.cvtColor(sal_mask.astype('uint8'),cv2.COLOR_RGB2LAB)
+
+        return image, image_id, label, sal_mask
+
+
+
 
 
 class Dataset_For_trainQ_withcam(Base_Dataset):
@@ -181,18 +213,16 @@ class Dataset_For_trainQ_withcam(Base_Dataset):
         image, image_id, label = super().__getitem__(index)
         size = image.size
         sal_mask = Image.open(self.sal_dir + image_id + '.png').convert('L')
-        cam = np.load(os.path.join(self.pse_dir, image_id+'.npy'))[0].transpose(1,2,0)
     
         if self.transform is not None:
-            input_dic = {'image': image, 'mask': sal_mask, 'cam': cam}
+            input_dic = {'image': image, 'mask': sal_mask}
             output_dic = self.transform(input_dic)
             image = output_dic['image']
             sal_mask = output_dic['mask']
-            cam=output_dic['cam'].transpose(2,0,1)# cv2.imwrite('1.png',cam[0]*255)
                 #cv2.imwrite('1.png',output_dic['image'][0]*255)
            
 
-        return image, image_id, label, sal_mask,cam
+        return image, image_id, label, sal_mask
 
 
 class Dataset_For_Testing_CAM(Base_Dataset):

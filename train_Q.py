@@ -1,10 +1,11 @@
 # Copyright (C) 2020 * Ltd. All rights reserved.
 # author : Sanghyeon Jo <josanghyeokn@gmail.com>
-
+import os
 from torch.nn.modules.loss import _Loss
 import core.models as fcnmodel
 import dataset_root
-import os
+ 
+
 import sys
 import copy
 import shutil
@@ -84,7 +85,7 @@ def get_params():
     # others
     ###############################################################################
     parser.add_argument('--print_ratio', default=0.1, type=float)
-    parser.add_argument('--tag', default='train_Q_', type=str)
+    parser.add_argument('--tag', default='train_Q_sal', type=str)
     parser.add_argument('--curtime', default='00', type=str)
     parser.add_argument('--downsize', default=16, type=int)
     
@@ -94,6 +95,9 @@ def get_params():
 
 
 def main(args):
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"   
+    time_string =  time.strftime("%Y-%m-%d %H:%M:%S")
+    args.curtime=time_string
     set_seed(0)
 
     tensorboard_dir = create_directory(
@@ -114,7 +118,7 @@ def main(args):
 
     log_func()
     Qlossfn = QLoss(args=args)
-    Qlossfn = torch.nn.DataParallel(Qlossfn).cuda()
+    # Qlossfn = torch.nn.DataParallel(Qlossfn).cuda()
     ###################################################################################
     # Transform, Dataset, DataLoader
     ###################################################################################
@@ -147,8 +151,8 @@ def main(args):
     train_domain = 'train_aug' if args.dataset == 'voc12' else 'train'
     test_domain = 'train' if args.dataset == 'voc12' else 'train_1000'
 
-    train_dataset = Dataset_For_trainQ_withcam(
-        data_dir, saliency_dir, args.cam_npy_path, train_domain, train_transform, args.dataset)
+    train_dataset = Dataset_with_SAL(
+        data_dir, saliency_dir ,train_domain,train_transform,_dataset=args.dataset)
     valid_dataset = Dataset_For_Evaluation(
         data_dir, test_domain, test_transform)
 
@@ -176,15 +180,15 @@ def main(args):
     ###################################################################################
 
     if(args.pretrain!=''):
-        network_data = torch.load(
-            args.pretrain)
-        model = fcnmodel.SpixelNet1l_bn(data=network_data).cuda()
+        # network_data = torch.load(
+        #     args.pretrain)
+        model = fcnmodel.SpixelNet1l_bn().cuda()
 
-    model = torch.nn.DataParallel(model).cuda()
+    # model = torch.nn.DataParallel(model).cuda()
 
     #=========== creat optimizer, we use adam by default ==================
-    param_groups = [{'params': model.module.bias_parameters(), 'weight_decay': 0},
-                    {'params': model.module.weight_parameters(), 'weight_decay': 0}]
+    param_groups = [{'params': model.bias_parameters(), 'weight_decay': 0},
+                    {'params': model.weight_parameters(), 'weight_decay': 0}]
     optimizer = torch.optim.Adam(param_groups, args.lr,
                                  betas=(0.9, 0.999))
 
@@ -240,7 +244,7 @@ def main(args):
             for step, (images, image_ids, tags, gt_masks) in enumerate(loader):
                 images = images.cuda()
                 _, _, w, h = images.shape
-                labels = labels.cuda()
+                labels = gt_masks.cuda()
                 inuptfeats = labels.clone()
                 inuptfeats[inuptfeats == 255] = 0
                 inuptfeats = label2one_hot_torch(inuptfeats.unsqueeze(1), C=21)
@@ -281,7 +285,7 @@ def main(args):
     torch.autograd.set_detect_anomaly(True)
 
     for iteration in range(max_iteration):
-        images, imgids, tags, sailencys, cams = train_iterator.get()
+        images, imgids, tags, sailencys,= train_iterator.get()
         tags = tags.cuda()
         images=images.cuda()
         #################################################################################################
@@ -295,24 +299,21 @@ def main(args):
 
         sailencys = sailencys.cuda().view(
             sailencys.shape[0], 1, sailencys.shape[1], sailencys.shape[2])/255.0
-        labels = (sailencys > 0.2).long()
-        cams = cams.cuda()
+        # labels = (sailencys > 0.2).long()
 
-        label_1hot = label2one_hot_torch(labels, C=2)  # set C=50 as SSN does
-
+        # label_1hot = label2one_hot_torch(labels, C=2)  # set C=50 as SSN does
+        label_1hot=sailencys
         # label_1hot = label2one_hot_torch(labels, C=2) # set C=50 as SSN does
         LABXY_feat_tensor = build_LABXY_feat(
         label_1hot, XY_feat_stack)  # B* (50+2 )* H * W
 
-        reloss = Qlossfn(prob, LABXY_feat_tensor, cams, imgids)
+        reloss = Qlossfn(prob, LABXY_feat_tensor, imgids)
         loss_s = torch.mean(reloss[0])
         press_loss = torch.mean(reloss[1])
         diff_loss = torch.mean(reloss[2])
 
-        if(iteration>0.7*max_iteration):
-            loss = loss_s + press_loss+diff_loss
-        else:
-            loss = loss_s
+
+        loss = loss_s
         #################################################################################################
 
         optimizer.zero_grad()
@@ -321,7 +322,7 @@ def main(args):
         train_meter.add({
             'loss': loss.item(),
             'sem_loss': loss_s.item(),
-            'pos_loss': same_loss.item(),
+            'pos_loss': press_loss.item(),
             'diff_loss': diff_loss.item(),
         })
 
@@ -360,36 +361,33 @@ def main(args):
         #################################################################################################
         # Evaluation
         #################################################################################################
-        if (iteration + 1) % (val_iteration) == 0:
+        if (iteration + 1) % (5*val_iteration) == 0:
+            save_model_fn()
+            
             mIoU, _ = evaluate(valid_loader)
             # mIoU,re_th = evaluatorA.evaluate('experiments/models/baseline_new_eval/2021-10-14 09:59:48.pth',model)
 
-            # continue
-            if best_valid_mIoU == -1 or best_valid_mIoU < mIoU:
-                best_valid_mIoU = mIoU
+            # # continue
+            # if best_valid_mIoU == -1 or best_valid_mIoU < mIoU:
+            #     best_valid_mIoU = mIoU
 
-                save_model_fn()
-                log_func('[i] save model')
+            #     save_model_fn()
+            #     log_func('[i] save model')
 
-            data = {
-                'iteration': iteration + 1,
-                'GT_reconstruct_mIoU': mIoU,
-                'best_valid_GTremIoU': best_valid_mIoU,
-                'time': eval_timer.tok(clear=True),
-            }
-            data_dic['validation'].append(data)
-            write_json(data_path, data_dic)
+            # data = {
+            #     'iteration': iteration + 1,
+            #     'GT_reconstruct_mIoU': mIoU,
+            #     'best_valid_GTremIoU': best_valid_mIoU,
+            #     'time': eval_timer.tok(clear=True),
+            # }
+            # data_dic['validation'].append(data)
+            # write_json(data_path, data_dic)
 
-            log_func('[i] \
-                iteration={iteration:,}, \
-                GT_reconstruct_mIoU={GT_reconstruct_mIoU:.2f}%, \
-                best_valid_GTremIoU={best_valid_mIoU:.2f}%, \
-                time={time:.0f}sec'.format(**data)
-                     )
+            log_func("miou"+str(mIoU))
 
-            writer.add_scalar('Evaluation/mIoU', mIoU, iteration)
-            writer.add_scalar('Evaluation/best_valid_mIoU',
-                              best_valid_mIoU, iteration)
+            # writer.add_scalar('Evaluation/mIoU', mIoU, iteration)
+            # writer.add_scalar('Evaluation/best_valid_mIoU',
+            #                   best_valid_mIoU, iteration)
     write_json(data_path, data_dic)
     writer.close()
 
