@@ -14,6 +14,7 @@ def tile_features(features, num_pieces):
     
     h_per_patch = h // num_pieces_per_line
     w_per_patch = w // num_pieces_per_line
+    features=features[:,:,:h_per_patch*num_pieces_per_line,:w_per_patch*num_pieces_per_line]
     
     """
     +-----+-----+

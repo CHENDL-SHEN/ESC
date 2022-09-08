@@ -2,7 +2,20 @@ import cv2
 import random
 import numpy as np
 from PIL import Image
-
+def resize_labels(labels, size):
+    """
+    Downsample labels for 0.5x and 0.75x logits by nearest interpolation.
+    Other nearest methods result in misaligned labels.
+    -> F.interpolate(labels, shape, mode='nearest')
+    -> cv2.resize(labels, shape, interpolation=cv2.INTER_NEAREST)
+    """
+    new_labels = []
+    for label in labels:
+        label = label.float().numpy()
+        label = Image.fromarray(label).resize(size, resample=Image.NEAREST)
+        new_labels.append(np.asarray(label))
+    new_labels = torch.LongTensor(new_labels)
+    return new_labels
 
 
 def convert_OpenCV_to_PIL(image):

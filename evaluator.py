@@ -1,6 +1,5 @@
 from operator import mod
 import os
-from pickle import FALSE, NONE, TRUE
 import sys
 import copy
 import shutil
@@ -48,11 +47,11 @@ def get_params():
     
 
     parser.add_argument(
-        '--Qmodel_path', default="experiments/models/train_Q_oriimg_lab/2022-09-04 11:41:44.pth", type=str)  # 
+        '--Qmodel_path', default="models_ckpt/Q_model_img.pth", type=str)  # 
     # parser.add_argument('--Qmodel_path', default='models_ckpt/Q_model_final.pth', type=str)#
     
     parser.add_argument(
-        '--Cmodel_path', default='experiments/models/train_sp_cam_VOC_tile/2022-09-05 17:24:25.pth', type=str)  # 
+        '--Cmodel_path', default='experiments/models/train_sp_cam_VOC_tile/2022-09-08 11:11:43.pth', type=str)  # 
     
     parser.add_argument('--savepng', default=False, type=str2bool)
     parser.add_argument('--savenpy', default=False, type=str2bool)
@@ -74,7 +73,7 @@ class evaluator:
         #   self.scale_list = [0.5, 1, 1.5, 2.0]  # - is flip
           self.scale_list = [0.5, 1, 1.5, 2.0, -0.5, -1, -1.5, -2.0]  # - is flip
         else:
-          self.scale_list = [1.0]  # - is flip
+          self.scale_list =  [1]   # - is flip
             
         self.th_list = th_list
         self.refine_list = refine_list
@@ -216,6 +215,8 @@ class evaluator:
                                     gt_masks[batch_index])
                                 gt_mask = cv2.resize(gt_mask,(pred_mask.shape[1],pred_mask.shape[0]), interpolation=cv2.INTER_NEAREST)
                                 # self.getbest_miou(clear=False)
+                                if (step==600) or (step==200):
+                                    print(self.getbest_miou(clear=False))
                                 self.meterlist[self.parms.index((renum, th))].add(pred_mask, gt_mask) #,self.meterlist[2].get(clear=False,detail=True)
                                 if(self.save_png_path!=None):
                                     cur_save_path = os.path.join(self.save_png_path,str(th))
@@ -241,7 +242,7 @@ class evaluator:
 
             return ret
 if __name__ =="__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"    
+    os.environ["CUDA_VISIBLE_DEVICES"] = "7"    
     
     args =get_params()
     time_string =  time.strftime("%Y-%m-%d %H:%M:%S")
@@ -261,7 +262,7 @@ if __name__ =="__main__":
     
     class_num =21 if args.dataset=='voc12' else 81
     if(args.sp_cam):
-        model = SP_CAM_Model('resnet50', num_classes=class_num)
+        model = SP_CAM_Model2('resnet50', num_classes=class_num)
     else:
         model = CAM_Model('resnet50', num_classes=class_num)
         
@@ -274,7 +275,7 @@ if __name__ =="__main__":
         #     "models_ckpt/SpixelNet_bsd_ckpt.tar")
         # Q_model = fcnmodel.SpixelNet1l_bn(data=network_data).cuda()
         Q_model = fcnmodel.SpixelNet1l_bn().cuda()
-        Q_model = nn.DataParallel(Q_model)
+        # Q_model = nn.DataParallel(Q_model)
         
         Q_model.load_state_dict(torch.load(args.Qmodel_path))
         Q_model.eval()
@@ -288,6 +289,6 @@ if __name__ =="__main__":
         _savenpy_path=create_directory(prediction_path+'camnpy/')
         
     
-    evaluatorA = evaluator(dataset='voc12',domain=args.domain,muti_scale=True, SP_CAM=args.sp_cam,save_np_path=_savenpy_path,savepng_path=_savepng_path, refine_list=[0,20,30],th_list=[0.2,0.3,0.4])
+    evaluatorA = evaluator(dataset='voc12',domain=args.domain,muti_scale=True, SP_CAM=args.sp_cam,save_np_path=_savenpy_path,savepng_path=_savepng_path, refine_list=[0,10,20],th_list=[0.2,0.3,0.35])
     ret = evaluatorA.evaluate(model, Q_model)
     log_func(str(ret))

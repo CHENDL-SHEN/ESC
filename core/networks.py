@@ -159,7 +159,8 @@ class SP_CAM_Model(Backbone):
                 conv(False,1024,256,1),
                 conv(False,256,  self.outc,1),
             )   
-        self.classifier = nn.Conv2d(2048, num_classes, 1, bias=False)
+        # self.classifier = nn.Conv2d(2048, num_classes, 1, bias=False)
+        self.classifier = conv(True,2048,num_classes,1)
 
     def get_x5_features(self,inputs):
         x1 = self.stage1(inputs)
@@ -187,9 +188,11 @@ class SP_CAM_Model(Backbone):
         # b,c,w,h=probs.shape
         x4,x5 =self.get_x5_features(inputs)
         logits = self.classifier(x5)
+        logits_min = self.classifier(self.global_average_pooling_2d(x5, keepdims=True))
+        
         deconv_parameters= self.DRM(probs,x5)
         logits = self.get_sp_cam(logits,deconv_parameters)
-        return logits,x4
+        return logits,logits_min
    
     def get_parameter_groups1(self, print_fn=print):
         groups = ([], [], [], [],[],[],[],[])
@@ -235,6 +238,74 @@ class SP_CAM_Model(Backbone):
                         groups[3].append(value)
         return groups
 
+class SP_CAM_Model(Backbone):
+
+    def __init__(self, model_name, num_classes=21):
+        super().__init__(model_name, num_classes, mode='fix',segmentation=False)
+        ch_q=32
+        self.outc=9*2
+
+        self.get_qfeats=nn.Sequential(
+                        # conv_dilation(True,9,ch_q,  3, stride=1,dilation=16),
+                        conv(True,9, ch_q,  4, stride=4), 
+                        conv(True,ch_q, ch_q*2,  4, stride=4), 
+                        conv(True,ch_q*2,ch_q*4, 3, stride=1),
+                        conv(True,ch_q*4,ch_q*4, 3, stride=1),
+                        )
+        # self.get_qfeats=nn.Sequential(
+        # # conv_dilation(True,9,ch_q,  3, stride=1,dilation=16),
+        # conv(True,9, ch_q,  4, stride=2), 
+        # conv(True,ch_q, ch_q,  3, stride=2), 
+        
+        # conv(True,ch_q,ch_q*2, 3, stride=2),
+        # conv(True,ch_q*2,ch_q*4, 3, stride=2),
+        # conv(True,ch_q*4,ch_q*4, 3, stride=2),
+        # )
+        self.get_tran_conv=nn.Sequential(
+                conv(False,ch_q*4+2048, int(1024),3),
+                conv(False,1024,256,1),
+                conv(False,256,  self.outc,1),
+            )   
+        self.classifier = nn.Conv2d(2048, num_classes, 1, bias=False)
+        # self.classifier = conv(True,2048,num_classes,1)
+
+    def get_x5_features(self,inputs):
+        x1 = self.stage1(inputs)
+        x2 = self.stage2(x1)
+        x3 = self.stage3(x2)
+        x4 = self.stage4(x3)
+        x5 = self.stage5(x4)
+        return   x2, x5
+    
+
+    def get_sp_cam(self,logits,deconv_para):
+        bg= upfeat(logits[:,0:1],deconv_para[:,:9],1,1)
+        fg= upfeat(logits[:,1:],deconv_para[:,9:],1,1)
+        logits =torch.cat([bg,fg],dim=1)
+        return logits
+
+    def DRM(self,probs,x5):
+        q=self.get_qfeats(probs) 
+        deconv_parameters = self.get_tran_conv(torch.cat([x5.detach(),q],dim=1))
+        bg_para=get_noliner(F.softmax(deconv_parameters[:,:9],dim=1))#torch.sum(fg_aff).max()# fg_aff[0,:,10:20,10:20].detach().cpu().numpy()
+        fg_para=get_noliner(F.softmax(deconv_parameters[:,9:],dim=1))#torch.sum(aff22).min()
+        deconv_parameters= torch.cat([bg_para,fg_para],dim=1)
+        return  deconv_parameters
+    def forward(self, inputs,probs,with_feat=False):
+        # b,c,w,h=probs.shape
+        x4,x5 =self.get_x5_features(inputs)
+        logits = self.classifier(x5)
+        logits_min = self.classifier(self.global_average_pooling_2d(x5, keepdims=True))
+        
+        deconv_parameters= self.DRM(probs,x5)
+        logits = self.get_sp_cam(logits,deconv_parameters)
+        if(with_feat):
+            return logits,logits_min,x4
+            
+        else:
+            
+            return logits,logits_min
+   
 
 class SP_CAM_Model2(Backbone):
 
@@ -244,27 +315,27 @@ class SP_CAM_Model2(Backbone):
         self.outc=9
 
         self.get_qfeats=nn.Sequential(
-                        conv_dilation(True,9,ch_q,  3, stride=1,dilation=16),
-                        conv(True,ch_q, ch_q,  3, stride=2), 
-                        conv(True,ch_q,ch_q*2, 3, stride=2),
-                        conv(True,ch_q*2,ch_q*4, 3, stride=2),
-                        conv(True,ch_q*4,ch_q*4, 3, stride=2),
+                        conv(True,9, ch_q,  4, stride=4), 
+                        conv(True,ch_q, ch_q*4,  4, stride=4), 
+                        conv(True,ch_q*4,ch_q*4, 3, stride=1),
                         )
-                
+        self.x4_feats=nn.Sequential(
+                        conv(True,1024,128, 1, stride=1),
+                        )     
+        self.x5_feats=nn.Sequential(
+                        conv(True,2048,128, 1, stride=1),
+
+                        ) 
         self.get_tran_conv5=nn.Sequential(
-                conv(False,ch_q*4+2048, int(1024),3),
-                conv(False,1024,256,3),
-                conv(False,256,128,3),
+                conv(False,ch_q*4+128, 128,3),
                 conv(False,128,  self.outc,1),
             )  
         self.get_tran_conv4=nn.Sequential(
-                conv(False,ch_q*4+1024, int(1024),3),
-                conv(False,1024,256,3),
-                conv(False,256,128,3),
+                conv(False,ch_q*4+128, 128,3),
                 conv(False,128,  self.outc,1),
             )   
+        
         self.classifier = nn.Conv2d(2048, num_classes, 1, bias=False)
-
 
 
     def get_sp_cam(self,logits,deconv_para):
@@ -288,58 +359,19 @@ class SP_CAM_Model2(Backbone):
         x3 = self.stage3(x2)
         x4_o = self.stage4(x3)
         
-        x4_dp=self.get_tran_conv4(torch.cat([x4_o.detach(),q_feat],dim=1))
+        x4_dp=self.get_tran_conv4(torch.cat([self.x4_feats(x4_o.detach()),q_feat],dim=1))
         x4_dp=F.softmax(x4_dp,dim=1)
         x4=upfeat(x4_o,x4_dp,1,1)
         
         x5 = self.stage5(x4)
-        x5_dp=self.get_tran_conv5(torch.cat([x5.detach(),q_feat],dim=1))
+        logits = self.classifier(x5)
+        
+        x5_dp=self.get_tran_conv5(torch.cat([self.x5_feats(x5.detach()),q_feat],dim=1))
         x5_dp=F.softmax(x5_dp,dim=1)
         
-        logits = self.classifier(x5)
         logits=upfeat(logits,x5_dp,1,1)
-        return logits,upfeat(x4_o.detach(),x4_dp,1,1)
+        
+        logits_min = self.classifier(self.global_average_pooling_2d(x5, keepdims=True))
+        
+        return logits,logits_min
    
-    def get_parameter_groups1(self, print_fn=print):
-        groups = ([], [], [], [],[],[],[],[])
-
-        for name, value in self.named_parameters():
-            # pretrained weights
-            if 'model' in name:
-                if 'weight' in name:
-                    # print_fn(f'pretrained weights : {name}')
-                    groups[0].append(value)
-                else:
-                    # print_fn(f'pretrained bias : {name}')
-                    groups[1].append(value)
-                    
-            # scracthed weights
-            else:
-                if('qfeats' in name ):
-                    if 'weight' in name:
-                        if print_fn is not None:
-                            print_fn(f'scratched weights : {name}')
-                        groups[4].append(value)
-                    else:
-                        if print_fn is not None:
-                            print_fn(f'scratched bias : {name}')
-                        groups[5].append(value)
-                elif('tran_conv' in name):
-                    if 'weight' in name:
-                        if print_fn is not None:
-                            print_fn(f'scratched weights : {name}')
-                        groups[6].append(value)
-                    else:
-                        if print_fn is not None:
-                            print_fn(f'scratched bias : {name}')
-                        groups[7].append(value)
-                else:
-                    if 'weight' in name:
-                        if print_fn is not None:
-                            print_fn(f'scratched weights : {name}')
-                        groups[2].append(value)
-                    else:
-                        if print_fn is not None:
-                            print_fn(f'scratched bias : {name}')
-                        groups[3].append(value)
-        return groups

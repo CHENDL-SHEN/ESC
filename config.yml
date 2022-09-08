@@ -1,0 +1,18 @@
+searchSpaceFile: search_space.json
+trialCommand: python3 train.py
+trialGpuNumber: 1
+trialConcurrency: 2
+maxTrialNumber: 1000
+maxExperimentDuration: 100h
+tuner:
+  name: GridSearch
+assessor:
+  name: Curvefitting
+  classArgs:
+    epoch_num: 12
+    start_step: 13
+    threshold: 0.98
+trainingService:  # For other platforms, check mnist-pytorch example
+  platform: local
+  gpuIndices: "3,4"   # 使用的GPU编号
+  use_active_gpu: True

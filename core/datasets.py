@@ -150,7 +150,7 @@ class Dataset_with_SAL(Base_Dataset):
     def __getitem__(self, index):
         image, image_id, label = super().__getitem__(index)
         size = image.size
-        sal_mask = Image.open(self.pse_dir + image_id + '.png').convert('L')
+        sal_mask = Image.open(self.pse_dir + image_id + '.png')
         if self.transform is not None:
             input_dic = {'image':image, 'mask':sal_mask}
             output_dic = self.transform(input_dic)
