@@ -55,6 +55,7 @@ class SP_CAM_Loss(_Loss):
         nnn = torch.max((1-bg.detach()*imgmin_mask).view(b,1,-1),dim=2)[0]>self.args.ig_th
         nnn2 = torch.max((bg.detach()*imgmin_mask).view(b,1,-1),dim=2)[0]>self.args.ig_th
         nnn=nnn*nnn2
+        
         imgmin_mask=nnn.view(b,1,1,1)*imgmin_mask
         probs=torch.cat([bg,fg_cam],dim=1)
         # probs=fg_cam

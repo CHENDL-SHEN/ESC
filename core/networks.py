@@ -313,7 +313,7 @@ class SP_CAM_Model2(Backbone):
         super().__init__(model_name, num_classes, mode='fix',segmentation=False)
         ch_q=32
         self.outc=9
-
+        
         self.get_qfeats=nn.Sequential(
                         conv(True,9, ch_q,  4, stride=4), 
                         conv(True,ch_q, ch_q*4,  4, stride=4), 
@@ -338,19 +338,9 @@ class SP_CAM_Model2(Backbone):
         self.classifier = nn.Conv2d(2048, num_classes, 1, bias=False)
 
 
-    def get_sp_cam(self,logits,deconv_para):
-        bg= upfeat(logits[:,0:1],deconv_para[:,:9],1,1)
-        fg= upfeat(logits[:,1:],deconv_para[:,9:],1,1)
-        logits =torch.cat([bg,fg],dim=1)
-        return logits
 
-    def DRM(self,probs,x5):
-        deconv_parameters = self.get_tran_conv(torch.cat([x5.detach(),q],dim=1))
-        bg_para=get_noliner(F.softmax(deconv_parameters[:,:9],dim=1))#torch.sum(fg_aff).max()# fg_aff[0,:,10:20,10:20].detach().cpu().numpy()
-        fg_para=get_noliner(F.softmax(deconv_parameters[:,9:],dim=1))#torch.sum(aff22).min()
-        deconv_parameters= torch.cat([bg_para,fg_para],dim=1)
-        return  deconv_parameters
-    def forward(self, inputs,probs):
+
+    def forward(self, inputs,probs,pcm=0):
         # b,c,w,h=probs.shape
         q_feat=self.get_qfeats(probs) 
         
@@ -372,6 +362,167 @@ class SP_CAM_Model2(Backbone):
         logits=upfeat(logits,x5_dp,1,1)
         
         logits_min = self.classifier(self.global_average_pooling_2d(x5, keepdims=True))
+        if(pcm>0):
+            x4=torch.cat([x4],dim=1)
+            b,c,h,w=x4.shape
+            x4=x4.view(b,c,-1)
+            x4=F.normalize(x4,dim=1)
+            aff = torch.bmm(x4.transpose(1,2),x4)**pcm
+            aff=aff/aff.sum(1,True)
+            logits_flat=logits.view(b,21,-1)#aff.max()
+            fl=torch.bmm (logits_flat,aff)
+            logits=fl.view(b,21,h,w)
+            pass
+        return logits,logits_min
+   
+
+
+class SP_CAM_Model3(Backbone):
+
+    def __init__(self, model_name, num_classes=21):
+        super().__init__(model_name, num_classes, mode='fix',segmentation=False)
+        ch_q=32
+        self.outc=9
+
+        self.get_qfeats=nn.Sequential(
+                conv(True,9, ch_q,  4, stride=4), 
+                conv(True,ch_q, ch_q*2,  2, stride=2), 
+                        )
+        self.get_qfeatsx3=nn.Sequential(
+
+                conv(True,ch_q*2,ch_q*2, 3, stride=1),
+                )
+        self.get_qfeatsx45=nn.Sequential(
+                conv(True,ch_q*2, ch_q*4,  2, stride=2), 
+                 conv(True,ch_q*4,ch_q*4, 3, stride=1),
+                )
+        self.x4_feats=nn.Sequential(
+                        conv(True,1024,128, 1, stride=1),
+                        )     
+        self.x5_feats=nn.Sequential(
+                        conv(True,2048,128, 1, stride=1),
+
+                        ) 
+        self.x3_feats=nn.Sequential(
+                        conv(True,512,64, 1, stride=1),
+
+                        ) 
+        self.get_tran_conv5=nn.Sequential(
+                conv(False,ch_q*4+128, 128,3),
+                conv(False,128,  self.outc,1),
+            )  
+        self.get_tran_conv4=nn.Sequential(
+                conv(False,ch_q*4+128, 128,3),
+                conv(False,128,  self.outc,1),
+            )   
+        self.get_tran_conv3=nn.Sequential(
+                conv(False,ch_q*2+64, 64,3),
+                conv(False,64,  self.outc,1),
+            )   
+        
+        self.classifier = nn.Conv2d(2048, num_classes, 1, bias=False)
+
+
+    def get_sp_cam(self,logits,deconv_para):
+        bg= upfeat(logits[:,0:1],deconv_para[:,:9],1,1)
+        fg= upfeat(logits[:,1:],deconv_para[:,9:],1,1)
+        logits =torch.cat([bg,fg],dim=1)
+        return logits
+
+    def DRM(self,probs,x5):
+        deconv_parameters = self.get_tran_conv(torch.cat([x5.detach(),q],dim=1))
+        bg_para=get_noliner(F.softmax(deconv_parameters[:,:9],dim=1))#torch.sum(fg_aff).max()# fg_aff[0,:,10:20,10:20].detach().cpu().numpy()
+        fg_para=get_noliner(F.softmax(deconv_parameters[:,9:],dim=1))#torch.sum(aff22).min()
+        deconv_parameters= torch.cat([bg_para,fg_para],dim=1)
+        return  deconv_parameters
+    def forward(self, inputs,probs):
+        # b,c,w,h=probs.shape
+        qq=self.get_qfeats(probs) 
+        q_feat=self.get_qfeatsx45(qq) 
+        # q_feat3=self.get_qfeatsx3(qq) 
+        
+        
+        x1 = self.stage1(inputs)
+        x2 = self.stage2(x1)
+        x3 = self.stage3(x2)
+        # x3_dp=self.get_tran_conv3(torch.cat([self.x3_feats(x3.detach()),q_feat3],dim=1))
+        # x3_dp=F.softmax(x3_dp,dim=1)
+        # x3=upfeat(x3,x3_dp,1,1)
+        
+        x4_o = self.stage4(x3)
+        
+        x4_dp=self.get_tran_conv4(torch.cat([self.x4_feats(x4_o.detach()),q_feat],dim=1))
+        x4_dp=F.softmax(x4_dp,dim=1)
+        x4=upfeat(x4_o,x4_dp,1,1)
+        
+        x5 = self.stage5(x4)
+        logits = self.classifier(x5)
+        
+        x5_dp=self.get_tran_conv5(torch.cat([self.x5_feats(x5.detach()),q_feat],dim=1))
+        x5_dp=F.softmax(x5_dp,dim=1)
+        
+        logits=upfeat(logits,x5_dp,1,1)
+        
+        logits_min = self.classifier(self.global_average_pooling_2d(x5, keepdims=True))
         
         return logits,logits_min
    
+class SP_CAM_Model4(Backbone):
+
+    def __init__(self, model_name, num_classes=21):
+        super().__init__(model_name, num_classes, mode='fix',segmentation=False)
+        ch_q=32
+        self.outc=9
+
+        self.get_qfeats=nn.Sequential(
+                        conv(True,9, ch_q,  4, stride=4), 
+                        conv(True,ch_q, ch_q*4,  4, stride=4), 
+                        conv(True,ch_q*4,ch_q*4, 3, stride=1),
+                        )
+        self.x4_feats=nn.Sequential(
+                        conv(True,1024,128, 1, stride=1),
+                        )     
+        self.x5_feats=nn.Sequential(
+                        conv(True,2048,128, 1, stride=1),
+
+                        ) 
+        self.get_tran_conv5=nn.Sequential(
+                conv(False,ch_q*4+128, 128,3),
+                conv(False,128,  self.outc,1),
+            )  
+        self.get_tran_conv4=nn.Sequential(
+                conv(False,ch_q*4+128, 128,3),
+                conv(False,128,  self.outc,1),
+            )   
+        self.classifier = nn.Conv2d(2048, num_classes, 1, bias=False)
+
+        self.classifier2 = nn.Conv2d(2048, num_classes, 1, bias=False)
+
+
+
+    def forward(self, inputs,probs,with2=False):
+        # b,c,w,h=probs.shape
+        q_feat=self.get_qfeats(probs) 
+        
+        x1 = self.stage1(inputs)
+        x2 = self.stage2(x1)
+        x3 = self.stage3(x2)
+        x4_o = self.stage4(x3)
+        
+        x4_dp=self.get_tran_conv4(torch.cat([self.x4_feats(x4_o.detach()),q_feat],dim=1))
+        x4_dp=F.softmax(x4_dp,dim=1)
+        x4=upfeat(x4_o,x4_dp,1,1)
+        
+        x5 = self.stage5(x4)
+        logits = self.classifier(x5)
+        
+        x5_dp=self.get_tran_conv5(torch.cat([self.x5_feats(x5.detach()),q_feat],dim=1))
+        x5_dp=F.softmax(x5_dp,dim=1)
+        
+        logits=upfeat(logits,x5_dp,1,1)
+        
+        logits_min = self.classifier(self.global_average_pooling_2d(x5, keepdims=True))
+        if(with2):
+            return logits,logits_min,x4.detach()
+        else:
+            return logits,logits_min

@@ -2,7 +2,7 @@
 # author : Sanghyeon Jo <josanghyeokn@gmail.com>
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "4"    
+os.environ["CUDA_VISIBLE_DEVICES"] = "6"    
 
 import argparse
 from cv2 import LMEDS, Tonemap, log, polarToCart
@@ -57,9 +57,9 @@ def get_params():
     ###############################################################################
     parser.add_argument('--num_workers', default=8, type=int) 
     parser.add_argument('--dataset', default='voc12', type=str, choices=['voc12', 'coco'])
-    parser.add_argument('--image_size', default=480, type=int)
+    parser.add_argument('--image_size', default=448, type=int)
     parser.add_argument('--min_image_size', default=320, type=int)
-    parser.add_argument('--max_image_size', default=640, type=int)
+    parser.add_argument('--max_image_size', default=480, type=int)
     ###############################################################################
     # Network
     ###############################################################################
@@ -76,7 +76,7 @@ def get_params():
     
     parser.add_argument('--ig_th', default=0.1, type=float)#
     
-    parser.add_argument('--patch_number', default=16, type=int)
+    parser.add_argument('--patch_number', default=9, type=int)
     ###############################################################################
     # others
     ###############################################################################
@@ -165,7 +165,7 @@ def main(args):
     ###################################################################################
     
     if(args.SP_CAM):
-        model = SP_CAM_Model(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 )
+        model = SP_CAM_Model2(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 )
     else:
         model = CAM_Model(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 ,)
     
@@ -265,12 +265,12 @@ def main(args):
         # sailencys= F.interpolate(sailencys.float(),size=(h*4,w*4) )
         # prob=F.interpolate(prob.float(),size=(h*4,w*4) )#x4[0,0,11,10]
         # x4 = poolfeat(sailencys.float(), prob, 16,16).cuda()
-        sailencys= F.interpolate(sailencys.float(),size=(h*8,w*8)).long()
-        sailencys[sailencys>=48]=0
-        sailencys= label2one_hot_torch(sailencys.long(), C=48)
+        # sailencys= F.interpolate(sailencys.float(),size=(h*8,w*8)).long()
+        sailencys[sailencys>=32]=0
+        sailencys= label2one_hot_torch(sailencys.long(), C=32)
 
-        prob=F.interpolate(prob.float(),size=(h*8,w*8) )#x4[0,0,11,10]
-        x4 = poolfeat(sailencys.float(), prob, 8,8).cuda()
+        prob=F.interpolate(prob.float(),size=(h*16,w*16) )#x4[0,0,11,10]
+        x4 = poolfeat(sailencys.float(), prob, 16,16).cuda()
         
         b, c, h, w = logits.size()
         tagpred = logitsmin#

@@ -34,27 +34,27 @@ from core.spnetwork_new import SANET_Model_new_base
 import core.models as fcnmodel
 
 import dataset_root
-
+PCM=4
 parser = argparse.ArgumentParser()
 
 ###################################################################################
 def get_params():
     ###############################################################################
     # Dataset
-    ###############################################################################
+    ############################################################################### 
     parser.add_argument('--dataset', default='voc12', type=str, choices=['voc12', 'coco'])
     parser.add_argument('--domain', default='train', type=str)
     
 
     parser.add_argument(
-        '--Qmodel_path', default="models_ckpt/Q_model_img.pth", type=str)  # 
+        '--Qmodel_path', default="models_ckpt/Q_model_final.pth", type=str)  # 
     # parser.add_argument('--Qmodel_path', default='models_ckpt/Q_model_final.pth', type=str)#
     
     parser.add_argument(
-        '--Cmodel_path', default='experiments/models/train_sp_cam_VOC_tile/2022-09-08 11:11:43.pth', type=str)  # 
+        '--Cmodel_path', default='experiments/models/train_sp_cam_VOC_hed/2022-09-08 13:34:59.pth', type=str)  # 
     
     parser.add_argument('--savepng', default=False, type=str2bool)
-    parser.add_argument('--savenpy', default=False, type=str2bool)
+    parser.add_argument('--savenpy', default=True, type=str2bool)
     
     parser.add_argument('--sp_cam', default=True, type=str2bool)
     
@@ -125,13 +125,13 @@ class evaluator:
                     scaled_images = torch.flip(
                         scaled_images, dims=[3])  # ?dims
                 if(self.SP_CAM):
-                    logits,x4 = self.C_model(scaled_images, q)
+                    logits,x4 = self.C_model(scaled_images, q,pcm=PCM)
                 else:
                     logits,x4  = self.C_model(scaled_images)
 
                 # pred = F.softmax(logits, dim=1)
                 pred=make_cam(logits)
-                cam_list.append(pred)
+                cam_list.append(logits)
         return cam_list
 
     def get_Q(self, images, ids):
@@ -204,9 +204,13 @@ class evaluator:
                         cams = (make_cam(refine_cams) * mask)
                         cams = F.interpolate(cams, (int(h),int(w)), mode='bilinear', align_corners=False)
                         if(self.save_np_path !=None):
-                            np.save(os.path.join(self.save_np_path, image_ids[0]+'.npy'),cams.cpu().numpy())
+                            cams2 = F.interpolate(cams, (int(h/4),int(w/4)), mode='bilinear', align_corners=False)
+                            np.save(os.path.join(self.save_np_path, image_ids[0]+'.npy'),cams2.cpu().numpy())
+                            www=cams[:,1:].max(1)[0][0].cpu().numpy()
+                            cv2.imwrite(os.path.join(self.save_np_path,image_ids[0]+'gray.png'),www*255)
                         for th in self.th_list:
                             cams[:,0] = th#predictions.max()
+          
                             predictions = torch.argmax(cams,dim=1)
                             for batch_index in range(images.size()[0]):
                                 pred_mask = get_numpy_from_tensor(
@@ -242,7 +246,7 @@ class evaluator:
 
             return ret
 if __name__ =="__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"] = "7"    
+    os.environ["CUDA_VISIBLE_DEVICES"] = "3"    
     
     args =get_params()
     time_string =  time.strftime("%Y-%m-%d %H:%M:%S")
@@ -288,7 +292,8 @@ if __name__ =="__main__":
     if(args.savenpy):
         _savenpy_path=create_directory(prediction_path+'camnpy/')
         
+    log_func(str(PCM))
     
-    evaluatorA = evaluator(dataset='voc12',domain=args.domain,muti_scale=True, SP_CAM=args.sp_cam,save_np_path=_savenpy_path,savepng_path=_savepng_path, refine_list=[0,10,20],th_list=[0.2,0.3,0.35])
+    evaluatorA = evaluator(dataset='voc12',domain=args.domain,muti_scale=True, SP_CAM=args.sp_cam,save_np_path=_savenpy_path,savepng_path=_savepng_path, refine_list=[0],th_list=[0.2,0.25,0.3,0.35,0.4])
     ret = evaluatorA.evaluate(model, Q_model)
     log_func(str(ret))

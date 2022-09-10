@@ -65,27 +65,28 @@ def get_params():
     ###############################################################################
     parser.add_argument('--backbone', default='resnet50', type=str)
     parser.add_argument('--batch_size', default=16, type=int)
-    parser.add_argument('--max_epoch', default=15, type=int)#***********调
-    parser.add_argument('--lr', default=0.01, type=float)#***********调
+    parser.add_argument('--max_epoch', default=12, type=int)#***********调
+    parser.add_argument('--lr', default=0.1, type=float)#***********调
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
     ###############################################################################
     # Hyperparameter
     ###############################################################################
-    parser.add_argument('--alpha', default=0.99, type=float)#
+    parser.add_argument('--alpha', default=0.3, type=float)#
     parser.add_argument('--clamp_rate', default=0.001, type=float)#
     
     parser.add_argument('--ig_th', default=0.1, type=float)#
     
-    parser.add_argument('--patch_number', default=1, type=int)
+    parser.add_argument('--patch_number', default=9, type=int)
     ###############################################################################
     # others
     ###############################################################################
     parser.add_argument('--SP_CAM', default=True, type=str2bool)#
-    parser.add_argument('--Qmodelpath', default='experiments/models/train_Q_sal/2022-09-07 19:39:04.pth', type=str)#
-    # parser.add_argument('--Qmodelpath', default='experiments/models/train_Q_oriimg_lab/2022-09-04 11:41:44.pth', type=str)#
+    # parser.add_argument('--Qmodelpath', default='models_ckpt/Q_model_final.pth', type=str)#
+    
+    parser.add_argument('--Qmodelpath', default='models_ckpt/Q_model_img.pth', type=str)#
     parser.add_argument('--print_ratio', default=0.1, type=float)
-    parser.add_argument('--tag', default='train_sp_cam_VOC_sal', type=str)
+    parser.add_argument('--tag', default='train_sp_cam_VOC_tile', type=str)
     parser.add_argument('--curtime', default='00', type=str)
 
     
@@ -124,7 +125,8 @@ def main(args):
         RandomResize_For_Segmentation(args.min_image_size, args.max_image_size),
         RandomHorizontalFlip_For_Segmentation(),
         Normalize_For_Segmentation(imagenet_mean, imagenet_std),
-        RandomCrop_For_Segmentation(args.image_size),
+        RandomCrop_For_Segmentation(args.image_size,3),
+
     ]
     
     train_transform = transforms.Compose(train_transforms + [Transpose_For_Segmentation()])
@@ -138,8 +140,9 @@ def main(args):
         
     data_dir= dataset_root.VOC_ROOT if args.dataset == 'voc12' else dataset_root.COCO_ROOT
     saliency_dir= dataset_root.VOC_SAL_ROOT if args.dataset == 'voc12' else dataset_root.COCO_SAL_ROOT
-    train_dataset = Dataset_with_SAL(
-        data_dir, saliency_dir ,domain,train_transform,_dataset=args.dataset)
+    # saliency_dir = "/media/ders/zhangyumin/SPML/VOCdevkit/VOC2012/hed/"
+    train_dataset = Dataset_with_LABIMG(
+        data_dir, data_dir+'JPEGImages/' ,domain,train_transform,_dataset=args.dataset)
     
     
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True, drop_last=True)
@@ -164,7 +167,7 @@ def main(args):
     ###################################################################################
     
     if(args.SP_CAM):
-        model = SP_CAM_Model2(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 )
+        model = SP_CAM_Model4(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 )
     else:
         model = CAM_Model(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 ,)
     
@@ -242,17 +245,16 @@ def main(args):
     for iteration in range(max_iteration):
         images, imgids,labels,sailencys= train_iterator.get()
         images = images.cuda()
-        labels = labels.cuda()
-        # sailencys = sailencys.cuda()
-        sailencys = sailencys.cuda().view(sailencys.shape[0],1,sailencys.shape[1],sailencys.shape[2])/255.0
+        labels = labels.cuda()#sailencys[:,1,]==120).sum()
         prob=None
         
 
         if(args.SP_CAM):
             prob = Q_model(images)
-
+        # prob =torch.zeros(size=(16,9,480,480)).cuda()
+        # prob[:,4,:,:]=1
         if(args.SP_CAM):
-            logits,logitsmin = model(images,prob)
+            logits,logitsmin,logits2,logitsmin2 = model(images,prob,True)
         else:
             logits,logitsmin = model(images)
 
@@ -262,18 +264,16 @@ def main(args):
         # x4_min=poolfeat(x4,prob)sailencys[2d].max()
         # sailencys[sailencys>200]=200
         # sailencys= F.interpolate(sailencys.float(),size=(h*4,w*4) )
-        # prob=F.interpolate(prob.float(),size=(h*4,w*4) )#x4[0,0,11,10]
-        # x4 = poolfeat(sailencys.float(), prob, 16,16).cuda()
-        
-
-        x4 = poolfeat(sailencys.float(), prob, 16,16).cuda()
-        x4=torch.cat([x4,1-x4],dim=1)
+        # prob=F.interpolate(prob.float(),size=(h*4,w*4) )
+        # f_c=F.one_hot(sailencys.long(),256).view(b,-1,256).transpose(1,2).view(b,256,h*4,w*4)
         
         b, c, h, w = logits.size()
         tagpred = logitsmin#
         cls_loss = F.multilabel_soft_margin_loss(tagpred[:, 1:].view(tagpred.size(0), -1), labels[:,1:])
-        
+        cls_loss2= F.multilabel_soft_margin_loss(logitsmin2[:, 1:].view(tagpred.size(0), -1), labels[:,1:])
         mask=labels[:,:].unsqueeze(2).unsqueeze(3).cuda()
+        wdwig=torch.max(logits2[:,1:].detach()*mask[:,1:],dim=1,keepdim=True)[0]>0#torch.max(logits[:,1:].max(),dim=1,keepdim=True)[0].max()
+        imgmin_mask*=wdwig
         fg_cam=make_cam(logits[:,1:])*mask[:,1:]
         # if(sailencys.shape[1]==1):
         #       sailencys = poolfeat(sailencys, prob, 16, 16).cuda()
@@ -281,16 +281,17 @@ def main(args):
               
               
         # pooll=nn.AvgPool2d(4,stride=4)
-        # prob=pooll(prob)
-  
+        # prob=pooll(prob)*(iteration/max_iteration)+0.5*(1-iteration/max_iteration)
+        alpha= args.alpha
         
+        x4 = poolfeat(images, prob, 16,16).cuda()
         
         target_feat=x4.detach()*imgmin_mask
         target_feat_tile=tile_features(target_feat,args.patch_number)
         fg_cam_tile=tile_features(fg_cam,args.patch_number)
         
-        sal_loss=lossfn(fg_cam_tile,target_feat_tile).mean()*args.alpha
-        loss= cls_loss+sal_loss 
+        sal_loss=lossfn(fg_cam_tile,target_feat_tile).mean()*alpha
+        loss= cls_loss+sal_loss+cls_loss2
         # if(loss>50):
         #         log_func('loss NAN')
         #         break
@@ -350,9 +351,9 @@ def main(args):
             refine_num,threshold=para
             if best_valid_mIoU == -1 or best_valid_mIoU < mIoU:
                 best_valid_mIoU = mIoU
-
-                save_model_fn()
-                log_func('[i] save model')
+                if(mIoU>52):
+                    save_model_fn()
+                    log_func('[i] save model')
 
             data = {
                 'iteration' : iteration + 1,

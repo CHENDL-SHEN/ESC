@@ -2,7 +2,7 @@
 # author : Sanghyeon Jo <josanghyeokn@gmail.com>
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"    
+os.environ["CUDA_VISIBLE_DEVICES"] = "6"    
 
 import argparse
 from cv2 import LMEDS, Tonemap, log, polarToCart
@@ -65,27 +65,27 @@ def get_params():
     ###############################################################################
     parser.add_argument('--backbone', default='resnet50', type=str)
     parser.add_argument('--batch_size', default=16, type=int)
-    parser.add_argument('--max_epoch', default=15, type=int)#***********调
-    parser.add_argument('--lr', default=0.01, type=float)#***********调
+    parser.add_argument('--max_epoch', default=12, type=int)#***********调
+    parser.add_argument('--lr', default=0.1, type=float)#***********调
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
     ###############################################################################
     # Hyperparameter
     ###############################################################################
-    parser.add_argument('--alpha', default=0.99, type=float)#
-    parser.add_argument('--clamp_rate', default=0.001, type=float)#
+    parser.add_argument('--alpha', default=1, type=float)#
     
     parser.add_argument('--ig_th', default=0.1, type=float)#
     
-    parser.add_argument('--patch_number', default=1, type=int)
+    parser.add_argument('--patch_number', default=9, type=int)
     ###############################################################################
     # others
     ###############################################################################
     parser.add_argument('--SP_CAM', default=True, type=str2bool)#
-    parser.add_argument('--Qmodelpath', default='experiments/models/train_Q_sal/2022-09-07 19:39:04.pth', type=str)#
-    # parser.add_argument('--Qmodelpath', default='experiments/models/train_Q_oriimg_lab/2022-09-04 11:41:44.pth', type=str)#
+    # parser.add_argument('--Qmodelpath', default='experiments/models/train_Q_hed/2022-09-07 14:45:33.pth', type=str)#
+    
+    parser.add_argument('--Qmodelpath', default='models_ckpt/Q_model_img.pth', type=str)#
     parser.add_argument('--print_ratio', default=0.1, type=float)
-    parser.add_argument('--tag', default='train_sp_cam_VOC_sal', type=str)
+    parser.add_argument('--tag', default='train_sp_cam_VOC_pse', type=str)
     parser.add_argument('--curtime', default='00', type=str)
 
     
@@ -138,6 +138,7 @@ def main(args):
         
     data_dir= dataset_root.VOC_ROOT if args.dataset == 'voc12' else dataset_root.COCO_ROOT
     saliency_dir= dataset_root.VOC_SAL_ROOT if args.dataset == 'voc12' else dataset_root.COCO_SAL_ROOT
+    saliency_dir = "/media/ders/zhangyumin/irn-master/result/ir_label/"
     train_dataset = Dataset_with_SAL(
         data_dir, saliency_dir ,domain,train_transform,_dataset=args.dataset)
     
@@ -164,7 +165,7 @@ def main(args):
     ###################################################################################
     
     if(args.SP_CAM):
-        model = SP_CAM_Model2(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 )
+        model = SP_CAM_Model(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 )
     else:
         model = CAM_Model(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 ,)
     
@@ -244,7 +245,7 @@ def main(args):
         images = images.cuda()
         labels = labels.cuda()
         # sailencys = sailencys.cuda()
-        sailencys = sailencys.cuda().view(sailencys.shape[0],1,sailencys.shape[1],sailencys.shape[2])/255.0
+        sailencys = sailencys.cuda().view(sailencys.shape[0],1,sailencys.shape[1],sailencys.shape[2])
         prob=None
         
 
@@ -252,7 +253,7 @@ def main(args):
             prob = Q_model(images)
 
         if(args.SP_CAM):
-            logits,logitsmin = model(images,prob)
+            logits,logitsmin,x2 = model(images,prob,True)
         else:
             logits,logitsmin = model(images)
 
@@ -264,11 +265,17 @@ def main(args):
         # sailencys= F.interpolate(sailencys.float(),size=(h*4,w*4) )
         # prob=F.interpolate(prob.float(),size=(h*4,w*4) )#x4[0,0,11,10]
         # x4 = poolfeat(sailencys.float(), prob, 16,16).cuda()
-        
+        # sailencys= F.interpolate(sailencys.float(),size=(h*8,w*8)).long()
+        # ig_m=sailencys==255
+        # sailencys[sailencys==255]=21
+        # sailencys[sailencys>=22]=0
+        # sailencys= label2one_hot_torch(sailencys.long(), C=22)
 
-        x4 = poolfeat(sailencys.float(), prob, 16,16).cuda()
-        x4=torch.cat([x4,1-x4],dim=1)
-        
+        prob=F.interpolate(prob.float(),size=(h*4,w*4) )#x4[0,0,11,10]
+        x4 = poolfeat(x2.float(), prob, 4,4).cuda()
+        # ig = poolfeat(ig_m.float(), prob, 8,8).cuda()
+        # ig=ig>0.2
+        # imgmin_mask=imgmin_mask*(~ig)#imgmin_mask.sum()
         b, c, h, w = logits.size()
         tagpred = logitsmin#
         cls_loss = F.multilabel_soft_margin_loss(tagpred[:, 1:].view(tagpred.size(0), -1), labels[:,1:])
