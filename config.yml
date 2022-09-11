@@ -1,7 +1,7 @@
-searchSpaceFile: search_space.json
-trialCommand: python3 train_sal.py
+searchSpaceFile: search_space_pcm.json
+trialCommand: python3 train_image_copy.py
 trialGpuNumber: 1
-trialConcurrency: 3
+trialConcurrency: 2
 maxTrialNumber: 1000
 maxExperimentDuration: 100h
 tuner:
@@ -14,5 +14,5 @@ assessor:
     threshold: 0.9
 trainingService:  # For other platforms, check mnist-pytorch example
   platform: local
-  gpuIndices: "3,4,6"   # 使用的GPU编号
+  gpuIndices: "2,3"   # 使用的GPU编号
   use_active_gpu: True

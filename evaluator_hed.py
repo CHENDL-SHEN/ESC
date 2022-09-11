@@ -48,13 +48,13 @@ def get_params():
 
     # parser.add_argument(
     #     '--Qmodel_path', default="models_ckpt/Q_model_final.pth", type=str)  # 
-    parser.add_argument('--Qmodel_path', default='models_ckpt/Q_model_img.pth', type=str)#
+    parser.add_argument('--Qmodel_path', default='experiments/models/train_Q_hed/2022-09-07 14:45:33.pth', type=str)#
     
     parser.add_argument(
-        '--Cmodel_path', default='experiments/models/train_sp_cam_VOC_tile/2022-09-08 11:11:43.pth', type=str)  # 
+        '--Cmodel_path', default='experiments/models/train_sp_cam_VOC_hed/2022-09-10 17:42:30.pth', type=str)  # 
     
-    parser.add_argument('--savepng', default=True, type=str2bool)
-    parser.add_argument('--savenpy', default=True, type=str2bool)
+    parser.add_argument('--savepng', default=False, type=str2bool)
+    parser.add_argument('--savenpy', default=False, type=str2bool)
     
     parser.add_argument('--sp_cam', default=True, type=str2bool)
     
@@ -180,7 +180,7 @@ class evaluator:
         iou_list.sort(key=lambda x: x[0], reverse=True)
         return iou_list
 
-    def evaluate(self, C_model,Q_model=None,beta=0,ite=1):
+    def evaluate(self, C_model,Q_model=None,beta=0,ite=8):
             self.C_model, self.Q_model = C_model,Q_model
             self.C_model.eval()
             if(self.SP_CAM):
@@ -206,10 +206,10 @@ class evaluator:
                         if(self.save_np_path !=None):
                             cams2 = F.interpolate(cams, (int(h/4),int(w/4)), mode='bilinear', align_corners=False)
                             np.save(os.path.join(self.save_np_path, image_ids[0]+'.npy'),cams2.cpu().numpy())
-                            www=cams[:,1:].max(1)[0][0].cpu().numpy()*255
-                            cv2.imwrite(os.path.join(self.save_np_path,image_ids[0]+'gray.png'),www)
+                            www=cams[:,1:].max(1)[0][0].cpu().numpy()
+                            cv2.imwrite(os.path.join(self.save_np_path,image_ids[0]+'gray.png'),www*255)
                         for th in self.th_list:
-                            cams[:,0] =th#predictions.max()
+                            cams[:,0] = th#predictions.max()
           
                             predictions = torch.argmax(cams,dim=1)
                             for batch_index in range(images.size()[0]):
@@ -294,6 +294,6 @@ if __name__ =="__main__":
         
     log_func(str(PCM))
     
-    evaluatorA = evaluator(dataset='voc12',domain=args.domain,muti_scale=True, SP_CAM=args.sp_cam,save_np_path=_savenpy_path,savepng_path=_savepng_path, refine_list=[0],th_list=[0.0,0.25,0.3,0.35,0.4])
-    ret = evaluatorA.evaluate(model, Q_model,0,10)
+    evaluatorA = evaluator(dataset='voc12',domain=args.domain,muti_scale=False, SP_CAM=args.sp_cam,save_np_path=_savenpy_path,savepng_path=_savepng_path, refine_list=[0],th_list=[0.2,0.25,0.3,0.35,0.4])
+    ret = evaluatorA.evaluate(model, Q_model)
     log_func(str(ret))

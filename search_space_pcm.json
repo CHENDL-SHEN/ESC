@@ -1,0 +1,6 @@
+{
+    "alpha": {"_type": "choice", "_value": [9.01,10.01,11.1]},
+    "patch_number": {"_type": "choice", "_value": [10,12,15,20,25]}
+
+
+}

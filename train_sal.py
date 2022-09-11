@@ -66,7 +66,7 @@ def get_params():
     parser.add_argument('--backbone', default='resnet50', type=str)
     parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--max_epoch', default=15, type=int)#***********调
-    parser.add_argument('--lr', default=0.01, type=float)#***********调
+    parser.add_argument('--lr', default=0.1, type=float)#***********调
     parser.add_argument('--wd', default=4e-5, type=float)
     parser.add_argument('--nesterov', default=True, type=str2bool)
     ###############################################################################
@@ -75,13 +75,14 @@ def get_params():
     parser.add_argument('--alpha', default=0.99, type=float)#
     parser.add_argument('--clamp_rate', default=0.001, type=float)#
     
-    parser.add_argument('--ig_th', default=0.1, type=float)#
+    parser.add_argument('--ig_th', default=0.01, type=float)#
     
     parser.add_argument('--patch_number', default=1, type=int)
     ###############################################################################
     # others
     ###############################################################################
     parser.add_argument('--SP_CAM', default=True, type=str2bool)#
+    # parser.add_argument('--Qmodelpath', default='models_ckpt/Q_model_final.pth', type=str)#
     parser.add_argument('--Qmodelpath', default='experiments/models/train_Q_sal/2022-09-07 19:39:04.pth', type=str)#
     # parser.add_argument('--Qmodelpath', default='experiments/models/train_Q_oriimg_lab/2022-09-04 11:41:44.pth', type=str)#
     parser.add_argument('--print_ratio', default=0.1, type=float)

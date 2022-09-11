@@ -340,7 +340,7 @@ class SP_CAM_Model2(Backbone):
 
 
 
-    def forward(self, inputs,probs,pcm=0):
+    def forward(self, inputs,probs,pcm=0,it=1):
         # b,c,w,h=probs.shape
         q_feat=self.get_qfeats(probs) 
         
@@ -370,8 +370,9 @@ class SP_CAM_Model2(Backbone):
             aff = torch.bmm(x4.transpose(1,2),x4)**pcm
             aff=aff/aff.sum(1,True)
             logits_flat=logits.view(b,21,-1)#aff.max()
-            fl=torch.bmm (logits_flat,aff)
-            logits=fl.view(b,21,h,w)
+            for i in range(it):
+                logits_flat=torch.bmm (logits_flat,aff)
+            logits=logits_flat.view(b,21,h,w)
             pass
         return logits,logits_min
    

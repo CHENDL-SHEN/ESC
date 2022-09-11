@@ -72,7 +72,7 @@ def get_params():
     ###############################################################################
     # Hyperparameter
     ###############################################################################
-    parser.add_argument('--alpha', default=0.3, type=float)#
+    parser.add_argument('--alpha', default=5.5, type=float)#
     parser.add_argument('--clamp_rate', default=0.001, type=float)#
     
     parser.add_argument('--ig_th', default=0.1, type=float)#
@@ -125,7 +125,7 @@ def main(args):
         RandomResize_For_Segmentation(args.min_image_size, args.max_image_size),
         RandomHorizontalFlip_For_Segmentation(),
         Normalize_For_Segmentation(imagenet_mean, imagenet_std),
-        RandomCrop_For_Segmentation(args.image_size,3),
+        RandomCrop_For_Segmentation(args.image_size),
 
     ]
     
@@ -140,9 +140,9 @@ def main(args):
         
     data_dir= dataset_root.VOC_ROOT if args.dataset == 'voc12' else dataset_root.COCO_ROOT
     saliency_dir= dataset_root.VOC_SAL_ROOT if args.dataset == 'voc12' else dataset_root.COCO_SAL_ROOT
-    # saliency_dir = "/media/ders/zhangyumin/SPML/VOCdevkit/VOC2012/hed/"
-    train_dataset = Dataset_with_LABIMG(
-        data_dir, data_dir+'JPEGImages/' ,domain,train_transform,_dataset=args.dataset)
+    saliency_dir = "/media/ders/zhangyumin/irn-master/result/ir_label/"
+    train_dataset = Dataset_with_SAL(
+        data_dir, saliency_dir ,domain,train_transform,_dataset=args.dataset)
     
     
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True, drop_last=True)
@@ -167,12 +167,13 @@ def main(args):
     ###################################################################################
     
     if(args.SP_CAM):
-        model = SP_CAM_Model4(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 )
+        model = SP_CAM_Model2(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 )
     else:
         model = CAM_Model(args.backbone, num_classes=21 if  args.dataset == 'voc12' else 81 ,)
     
     model = model.cuda()
     model.train()
+    model.load_state_dict(torch.load("experiments/models/train_sp_cam_VOC_tile/2022-09-08 11:11:43.pth"))
     log_func('[i] Total Params: %.2fM'%(calculate_parameters(model)))
     log_func()
     try:
@@ -188,7 +189,7 @@ def main(args):
     
     val_domain = 'train_600' if args.dataset=='voc12'  else  'train_1000'
     if(args.SP_CAM):
-        evaluatorA=evaluator.evaluator(args.dataset,domain=val_domain ,SP_CAM=True,refine_list=[0],th_list=[0.15,0.2,0.3])
+        evaluatorA=evaluator.evaluator(args.dataset ,SP_CAM=True,refine_list=[0],th_list=[0.15,0.2,0.25,0.3,0.35],domain="train_600")
     else:
         evaluatorA=evaluator.evaluator(args.dataset,domain=val_domain ,SP_CAM=False,refine_list=[0])
 
@@ -247,14 +248,15 @@ def main(args):
         images = images.cuda()
         labels = labels.cuda()#sailencys[:,1,]==120).sum()
         prob=None
-        
-
+        mIoU,para = evaluatorA.evaluate(model,Q_model,args.alpha,args.patch_number)[0]
+        nni.report_final_result(mIoU)
+        return
         if(args.SP_CAM):
             prob = Q_model(images)
         # prob =torch.zeros(size=(16,9,480,480)).cuda()
         # prob[:,4,:,:]=1
         if(args.SP_CAM):
-            logits,logitsmin,logits2,logitsmin2 = model(images,prob,True)
+            logits,logitsmin = model(images,prob,True)
         else:
             logits,logitsmin = model(images)
 
@@ -262,39 +264,40 @@ def main(args):
         imgmin_mask= F.interpolate(images.float(),size=(h,w) )
         imgmin_mask= imgmin_mask.float().sum(dim=1,keepdim=True)!=0
         # x4_min=poolfeat(x4,prob)sailencys[2d].max()
+        sailencys=sailencys.cuda()
         # sailencys[sailencys>200]=200
-        # sailencys= F.interpolate(sailencys.float(),size=(h*4,w*4) )
+        # sailencys= F.interpolate(sailencys.unsqueeze(1).float(),size=(h,w), mode='bilinear', align_corners=False )
+        # sailencys=sailencys>0#sailencys.sum()
         # prob=F.interpolate(prob.float(),size=(h*4,w*4) )
         # f_c=F.one_hot(sailencys.long(),256).view(b,-1,256).transpose(1,2).view(b,256,h*4,w*4)
         
         b, c, h, w = logits.size()
         tagpred = logitsmin#
         cls_loss = F.multilabel_soft_margin_loss(tagpred[:, 1:].view(tagpred.size(0), -1), labels[:,1:])
-        cls_loss2= F.multilabel_soft_margin_loss(logitsmin2[:, 1:].view(tagpred.size(0), -1), labels[:,1:])
+        
         mask=labels[:,:].unsqueeze(2).unsqueeze(3).cuda()
-        wdwig=torch.max(logits2[:,1:].detach()*mask[:,1:],dim=1,keepdim=True)[0]>0#torch.max(logits[:,1:].max(),dim=1,keepdim=True)[0].max()
-        imgmin_mask*=wdwig
+        # imgmin_mask*=sailencys
+        
         fg_cam=make_cam(logits[:,1:])*mask[:,1:]
         # if(sailencys.shape[1]==1):
         #       sailencys = poolfeat(sailencys, prob, 16, 16).cuda()
         #       sailencys =torch.cat([sailencys,1-sailencys],dim=1)
               
-              
+        #cv2.imwrite("1.png")
         # pooll=nn.AvgPool2d(4,stride=4)
         # prob=pooll(prob)*(iteration/max_iteration)+0.5*(1-iteration/max_iteration)
         alpha= args.alpha
         
-        x4 = poolfeat(images, prob, 16,16).cuda()
-        
-        target_feat=x4.detach()*imgmin_mask
+        target_feat = poolfeat(images, prob, 16,16).cuda()
+        target_feat=target_feat.detach()*imgmin_mask
         target_feat_tile=tile_features(target_feat,args.patch_number)
         fg_cam_tile=tile_features(fg_cam,args.patch_number)
         
         sal_loss=lossfn(fg_cam_tile,target_feat_tile).mean()*alpha
-        loss= cls_loss+sal_loss+cls_loss2
-        # if(loss>50):
-        #         log_func('loss NAN')
-        #         break
+        
+        
+        loss= cls_loss+sal_loss
+
         #################################################################################################
         
         optimizer.zero_grad()
